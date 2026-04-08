@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Cricket Match Analysis Agent
 
 A practical cricket project to learn **agentic AI concepts** using a real observe-recall-evaluate-act strategy loop.
@@ -82,6 +81,11 @@ It also stores a plain-English `change_reason`, for example:
 Keep the **state schema** stable when you move from hardcoded data to live data. That will let you reuse the same strategy logic.
 
 This live adapter is a **best-effort scraper**, since Cricbuzz does not expose an official public developer API for this use case.
-=======
-# cricket-match-analysis-agent
->>>>>>> 3f64163b6f7b98d91d6cef5eb65506ddaad45f5c
+
+## Copilot Agent prompt history
+
+The last (and first) prompt given to the GitHub Copilot coding agent on this repository was:
+
+> **"what was the last prompt I had given on this repository?"**
+
+This was the first time the Copilot coding agent was invoked on this repository. There were no prior agent sessions or prompts before this one.
