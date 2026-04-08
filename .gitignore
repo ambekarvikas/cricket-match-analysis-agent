@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# History data (runtime artefact)
+backend/data/*.jsonl
+data/*.jsonl
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
