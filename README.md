@@ -82,10 +82,3 @@ Keep the **state schema** stable when you move from hardcoded data to live data.
 
 This live adapter is a **best-effort scraper**, since Cricbuzz does not expose an official public developer API for this use case.
 
-## Copilot Agent prompt history
-
-The last (and first) prompt given to the GitHub Copilot coding agent on this repository was:
-
-> **"what was the last prompt I had given on this repository?"**
-
-This was the first time the Copilot coding agent was invoked on this repository. There were no prior agent sessions or prompts before this one.
