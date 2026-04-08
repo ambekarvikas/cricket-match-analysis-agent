@@ -6,9 +6,16 @@ interface MatchSnapshotProps {
 
 export function MatchSnapshot({ state }: MatchSnapshotProps) {
   const totalOvers = state.total_overs ?? 20
+  const highlightText = state.result_summary ?? state.status
+  const highlightClass = state.is_match_complete
+    ? 'text-emerald-300 bg-emerald-900/20 border-emerald-800'
+    : state.is_innings_complete
+      ? 'text-blue-300 bg-blue-900/20 border-blue-800'
+      : 'text-yellow-300 bg-yellow-900/20 border-yellow-800'
+
   return (
     <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-      <h2 className="text-base font-semibold text-emerald-400 mb-3">Live Match Snapshot</h2>
+      <h2 className="text-base font-semibold text-emerald-400 mb-3">Match Snapshot</h2>
       <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
         <div>
           <span className="text-gray-400">Match: </span>
@@ -35,6 +42,11 @@ export function MatchSnapshot({ state }: MatchSnapshotProps) {
             <span>{state.venue}</span>
           </div>
         )}
+        {highlightText && (
+          <div className={`w-full mt-1 text-xs border rounded px-2 py-1 ${highlightClass}`}>
+            {highlightText}
+          </div>
+        )}
         {(state.striker ?? state.bowler) && (
           <div className="w-full mt-1">
             <span className="text-gray-400">Matchup: </span>
@@ -43,6 +55,9 @@ export function MatchSnapshot({ state }: MatchSnapshotProps) {
               | Bowler: {state.bowler} {state.bowler_score}
             </span>
           </div>
+        )}
+        {state.upcoming_phase_note && !state.is_match_complete && (
+          <div className="w-full text-cyan-300 text-xs mt-1">{state.upcoming_phase_note}</div>
         )}
         {state.conditions_note && (
           <div className="w-full text-yellow-300 text-xs mt-1">{state.conditions_note}</div>

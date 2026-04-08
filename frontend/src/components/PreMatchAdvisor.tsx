@@ -9,8 +9,15 @@ interface PreMatchAdvisorProps {
 export function PreMatchAdvisor({ state }: PreMatchAdvisorProps) {
   const [advice, setAdvice] = useState<PreMatchResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const isPreMatch = Boolean(state.is_pre_match) || ((state.runs ?? 0) === 0 && (state.overs ?? 0) === 0)
 
   useEffect(() => {
+    if (!isPreMatch) {
+      setAdvice(null)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     setLoading(true)
     fetchPreMatch(state)
@@ -18,8 +25,9 @@ export function PreMatchAdvisor({ state }: PreMatchAdvisorProps) {
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [state.batting_team, state.bowling_team, state.source_url])
+  }, [isPreMatch, state.batting_team, state.bowling_team, state.source_url])
 
+  if (!isPreMatch) return null
   if (loading) return <div className="text-xs text-gray-400 p-4">Loading pre-match advice…</div>
   if (!advice) return null
 
@@ -99,14 +107,18 @@ function TeamXISection({
           ))}
         </ul>
       )}
-      {comparisonNotes &&
-        Object.entries(comparisonNotes).map(([team, notes]) =>
-          notes.map((n, i) => (
-            <p key={`${team}-${i}`} className="text-xs text-gray-400">
-              • {team}: {n}
-            </p>
-          ))
-        )}
+      {comparisonNotes && Object.keys(comparisonNotes).length > 0 && (
+        <div className="mt-2 space-y-2">
+          {Object.entries(comparisonNotes).map(([team, notes]) => (
+            <div key={team} className="text-xs text-gray-400">
+              <div className="font-medium text-gray-300 mb-1">{team}</div>
+              {notes.map((n, i) => (
+                <p key={`${team}-${i}`}>• {n}</p>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

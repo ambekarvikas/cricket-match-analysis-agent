@@ -188,6 +188,14 @@ def save_history_entry(entry: Dict[str, Any], history_path: Path | str = DEFAULT
     previous_entry = _last_entry_for_match(existing_rows, entry.get("match_key", ""))
 
     if previous_entry and previous_entry.get(OVER_BUCKET_FIELD) == entry.get(OVER_BUCKET_FIELD):
+        previous_wp = previous_entry.get("win_probability") if previous_entry else None
+        current_wp = entry.get("win_probability")
+        entry["previous_win_probability"] = previous_wp
+        entry["win_probability_delta"] = None if previous_wp is None or current_wp is None else current_wp - previous_wp
+        if has_score_changed(previous_entry, entry):
+            entry["change_reason"] = f"Live partial-over update: {build_over_change_reason(previous_entry, entry)}"
+        else:
+            entry["change_reason"] = "No scoreboard movement since the last refresh, so the agent is holding the same live read."
         return False
 
     previous_wp = previous_entry.get("win_probability") if previous_entry else None

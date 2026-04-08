@@ -227,6 +227,48 @@ def _extract_live_player_context(html_text: str) -> Dict[str, Any]:
     return context
 
 
+def _extract_result_status(text: str) -> Optional[str]:
+    patterns = (
+        r"([A-Z][A-Za-z&.'-]*(?:\s+[A-Z][A-Za-z&.'-]*){0,4}\s+won by\s+\d+\s+(?:run|runs|wicket|wickets))",
+        r"([A-Z][A-Za-z&.'-]*(?:\s+[A-Z][A-Za-z&.'-]*){0,4}\s+beat\s+[A-Z][A-Za-z&.'-]*(?:\s+[A-Z][A-Za-z&.'-]*){0,4}\s+by\s+\d+\s+(?:run|runs|wicket|wickets))",
+        r"(Match tied)",
+        r"(Tied match)",
+        r"(No result(?: due to rain)?)",
+        r"(Match abandoned)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            cleaned = _clean_text(match.group(1))
+            won_by_match = re.search(r"(won by\s+\d+\s+(?:run|runs|wicket|wickets))", cleaned, re.IGNORECASE)
+            if won_by_match:
+                suffix = won_by_match.group(1)
+                lowered = cleaned.lower()
+                for team_name in sorted(set(TEAM_NAME_BY_SHORT.values()), key=len, reverse=True):
+                    if team_name.lower() in lowered:
+                        return f"{team_name} {suffix}"
+            return cleaned
+    return None
+
+
+def _extract_scoreboard_entries(text: str) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    seen_shorts = set()
+    for short, runs, wickets, overs in re.findall(r"\b([A-Z]{2,5})\s+(\d{1,3})\s*[/-]\s*(\d{1,2})\s*\(\s*(\d+(?:\.\d+)?)\s*\)", text):
+        if short in seen_shorts:
+            continue
+        entries.append({
+            "short": short,
+            "runs": int(runs),
+            "wickets": int(wickets),
+            "overs": float(overs),
+        })
+        seen_shorts.add(short)
+        if len(entries) >= 4:
+            break
+    return entries
+
+
 def _parse_score_fragment(score_fragment: str) -> Dict[str, Any]:
     match = re.search(r"(\d{1,3})-(\d{1,2})\s*\((\d+(?:\.\d+)?)\)", score_fragment)
     if not match:
@@ -391,6 +433,8 @@ def _parse_direct_match_page(match_url: str) -> Dict[str, Any]:
     fixture_teams = _extract_fixture_teams_from_url(match_url)
     rain_context = _extract_rain_overs_context(page_text) | _extract_rain_overs_context(html_text)
     player_context = _extract_live_player_context(html_text)
+    result_status = _extract_result_status(page_text)
+    scoreboard_entries = _extract_scoreboard_entries(page_text)
 
     score_match = re.search(
         r"Follow [^\"]*?\b([A-Z]{2,5})\s+(\d{1,3})[/-](\d{1,2})\s*\((\d+(?:\.\d+)?)\)",
@@ -410,7 +454,7 @@ def _parse_direct_match_page(match_url: str) -> Dict[str, Any]:
         page_text,
         re.IGNORECASE,
     )
-    status_text = rich_status_match.group(1).strip() if rich_status_match else page_text[:180]
+    status_text = result_status or (rich_status_match.group(1).strip() if rich_status_match else page_text[:180])
 
     if not score_match:
         first_team = fixture_teams[0] if len(fixture_teams) >= 1 else "Team A"
@@ -436,6 +480,9 @@ def _parse_direct_match_page(match_url: str) -> Dict[str, Any]:
         return prematch_state
 
     batting_short, runs, wickets, overs = score_match.groups()
+    parsed_overs = float(overs)
+    if rain_context.get("total_overs") and float(rain_context["total_overs"]) < parsed_overs:
+        rain_context = {}
     if status_text.lower() == "preview":
         status_text = rain_context.get("conditions_note") or f"Live: {runs}/{wickets} after {overs} overs"
     batting_team = TEAM_NAME_BY_SHORT.get(batting_short, batting_short)
@@ -454,6 +501,11 @@ def _parse_direct_match_page(match_url: str) -> Dict[str, Any]:
     if need_match:
         target = int(runs) + int(need_match.group(1))
         innings = 2
+    elif len(scoreboard_entries) >= 2:
+        other_entry = next((entry for entry in scoreboard_entries if entry["short"] != batting_short), None)
+        if other_entry:
+            target = other_entry["runs"] + 1
+            innings = 2
 
     parsed = {
         "match_id": _extract_match_id(match_url),
@@ -478,7 +530,9 @@ def _parse_direct_match_page(match_url: str) -> Dict[str, Any]:
 
 def get_live_match_state_from_cricbuzz(match_reference: Optional[str] = None) -> Dict[str, Any]:
     direct_url = _extract_match_url(match_reference)
-    if direct_url:
+    has_full_match_url = bool(match_reference and re.search(r"/live-cricket-scores/\d+/[^\s/]+", match_reference))
+
+    if has_full_match_url and direct_url:
         try:
             return _parse_direct_match_page(direct_url)
         except Exception:
@@ -510,17 +564,25 @@ def get_live_match_state_from_cricbuzz(match_reference: Optional[str] = None) ->
             None,
         )
 
-    if selected_match is None and direct_url:
+    if selected_match is None and direct_url and has_full_match_url:
         return _parse_direct_match_page(direct_url)
     if selected_match is None:
         selected_match = live_matches[0]
 
-    selected_url = selected_match.get("source_url")
+    selected_url = selected_match.get("source_url") or direct_url
     if selected_url:
         try:
             direct_state = _parse_direct_match_page(selected_url)
+            placeholder_strings = {"Unknown", "Team A", "Team B", "N/A"}
             merged_state = dict(selected_match)
-            merged_state.update({key: value for key, value in direct_state.items() if value not in (None, "", [])})
+            merged_state.update(
+                {
+                    key: value
+                    for key, value in direct_state.items()
+                    if value not in (None, "", [])
+                    and not (isinstance(value, str) and value.strip() in placeholder_strings)
+                }
+            )
             return merged_state
         except Exception:
             pass

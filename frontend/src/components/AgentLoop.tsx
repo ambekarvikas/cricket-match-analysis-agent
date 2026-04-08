@@ -8,6 +8,8 @@ export function AgentLoop({ analysis }: AgentLoopProps) {
   const { evaluation } = analysis
 
   const statusColor = (s: string) => {
+    if (s.includes('complete') || s.includes('completed') || s.includes('break'))
+      return 'text-cyan-400'
     if (s.includes('excellent') || s.includes('strong') || s.includes('on-track'))
       return 'text-emerald-400'
     if (s.includes('pressure') || s.includes('below')) return 'text-red-400'

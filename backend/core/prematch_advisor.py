@@ -41,6 +41,16 @@ SPINNER_NAMES = {
     "ravindra jadeja",
     "anukul roy",
 }
+INVALID_PLAYER_NAMES = {
+    "batting",
+    "bowling",
+    "batter",
+    "bowler",
+    "wk-batter",
+    "allrounder",
+    "batting allrounder",
+    "bowling allrounder",
+}
 TEAM_SELECTION_PRIORITIES = {
     "Kolkata Knight Riders": [
         "Finn Allen", "Sunil Narine", "Ajinkya Rahane (C)", "Angkrish Raghuvanshi (WK)", "Rinku Singh",
@@ -102,6 +112,37 @@ def _extract_fixture_teams(source_url: Optional[str]) -> List[str]:
     return [TEAM_NAME_BY_SLUG.get(team_a, team_a.upper()), TEAM_NAME_BY_SLUG.get(team_b, team_b.upper())]
 
 
+def _canonical_player_name(name: str) -> str:
+    return re.sub(r"\s+\((?:C|WK)\)", "", _clean_text(name), flags=re.IGNORECASE).strip().lower()
+
+
+def _assign_xi_blocks_to_teams(first_block: List[str], second_block: List[str], team_names: List[str]) -> Dict[str, List[str]]:
+    if len(team_names) < 2:
+        return {team_names[0] if team_names else "Team 1": first_block + second_block}
+
+    first_team, second_team = team_names[0], team_names[1]
+    first_team_set = {_canonical_player_name(name) for name in TEAM_SELECTION_PRIORITIES.get(first_team, [])}
+    second_team_set = {_canonical_player_name(name) for name in TEAM_SELECTION_PRIORITIES.get(second_team, [])}
+
+    normal_score = sum(_canonical_player_name(name) in first_team_set for name in first_block) + sum(
+        _canonical_player_name(name) in second_team_set for name in second_block
+    )
+    swapped_score = sum(_canonical_player_name(name) in second_team_set for name in first_block) + sum(
+        _canonical_player_name(name) in first_team_set for name in second_block
+    )
+
+    if swapped_score > normal_score:
+        return {
+            first_team: second_block,
+            second_team: first_block,
+        }
+
+    return {
+        first_team: first_block,
+        second_team: second_block,
+    }
+
+
 def _extract_playing_xi_from_squads_page(squads_url: str, team_names: List[str]) -> Dict[str, Any]:
     try:
         raw_html = _fetch_html(squads_url)
@@ -122,15 +163,12 @@ def _extract_playing_xi_from_squads_page(squads_url: str, team_names: List[str])
     if len(cleaned_names) < 22:
         return {"lineup_type": "Unavailable", "teams": {}}
 
-    first_team = team_names[0] if len(team_names) >= 1 else "Team 1"
-    second_team = team_names[1] if len(team_names) >= 2 else "Team 2"
+    first_block = cleaned_names[:11]
+    second_block = cleaned_names[11:22]
 
     return {
         "lineup_type": "Confirmed Playing XI",
-        "teams": {
-            first_team: cleaned_names[:11],
-            second_team: cleaned_names[11:22],
-        },
+        "teams": _assign_xi_blocks_to_teams(first_block, second_block, team_names),
         "source_url": squads_url,
     }
 
@@ -210,10 +248,12 @@ def _extract_full_squad_pool(state: Dict[str, Any]) -> Dict[str, List[Dict[str, 
 
     cleaned_page = _clean_text(re.sub(r"<[^>]+>", " ", raw_html))
     relevant_text = _extract_relevant_squad_text(cleaned_page)
-    flat_players = [
-        {"name": _clean_text(name), "role": role}
-        for name, role in PLAYER_ROLE_PATTERN.findall(relevant_text)
-    ]
+    flat_players = []
+    for name, role in PLAYER_ROLE_PATTERN.findall(relevant_text):
+        clean_name = _clean_text(name)
+        if _canonical_player_name(clean_name) in INVALID_PLAYER_NAMES:
+            continue
+        flat_players.append({"name": clean_name, "role": role})
 
     if len(flat_players) < 10:
         return {}
@@ -320,8 +360,8 @@ def _build_comparison_notes(recommended: Dict[str, List[str]], announced: Dict[s
         if not announced_xi:
             continue
 
-        to_add = [player for player in recommended_xi if player not in announced_xi]
-        to_remove = [player for player in announced_xi if player not in recommended_xi]
+        to_add = [player for player in recommended_xi if _canonical_player_name(player) not in INVALID_PLAYER_NAMES and player not in announced_xi]
+        to_remove = [player for player in announced_xi if _canonical_player_name(player) not in INVALID_PLAYER_NAMES and player not in recommended_xi]
         if to_add or to_remove:
             notes[team_name] = []
             if to_add:

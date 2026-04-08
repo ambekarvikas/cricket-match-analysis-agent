@@ -93,7 +93,7 @@ export function Sidebar({
                     className="cursor-pointer hover:text-emerald-400 truncate"
                     onClick={() =>
                       onMatchReferenceChange(
-                        m.match_id ?? m.source_url ?? ''
+                        m.source_url ?? m.match_id ?? ''
                       )
                     }
                   >

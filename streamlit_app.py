@@ -140,6 +140,9 @@ def _render_reflection(agent_output: dict) -> None:
 def _render_strategy(plan: dict, enriched_state: dict) -> None:
     st.subheader("Team Perspectives")
 
+    if enriched_state.get("upcoming_phase_note"):
+        st.info(f"Upcoming phase read: {enriched_state['upcoming_phase_note']}")
+
     batting_col, bowling_col = st.columns(2)
     with batting_col:
         st.markdown("### Batting Plan")
@@ -155,6 +158,37 @@ def _render_strategy(plan: dict, enriched_state: dict) -> None:
         st.markdown(f"**Risk Level:** `{plan.get('bowling_risk_level', 'N/A')}`")
         st.markdown(f"**Focus:** {plan.get('bowling_focus', 'N/A')}")
         st.markdown(f"**Bowling Team:** {enriched_state.get('bowling_team', 'Unknown')}")
+
+    if plan.get("current_batter_insight") or plan.get("current_bowler_insight"):
+        insight_col1, insight_col2 = st.columns(2)
+        with insight_col1:
+            if plan.get("current_batter_insight"):
+                st.markdown("#### Current Batter Insight")
+                st.success(plan["current_batter_insight"])
+        with insight_col2:
+            if plan.get("current_bowler_insight"):
+                st.markdown("#### Current Bowler Insight")
+                st.warning(plan["current_bowler_insight"])
+
+    if plan.get("batting_tactics"):
+        st.markdown("#### Batting Tactics")
+        for note in plan["batting_tactics"]:
+            st.markdown(f"- {note}")
+
+    if plan.get("bowling_tactics"):
+        st.markdown("#### Bowling Tactics")
+        for note in plan["bowling_tactics"]:
+            st.markdown(f"- {note}")
+
+    if plan.get("phase_watchouts"):
+        st.markdown("#### Phase Watchouts")
+        for note in plan["phase_watchouts"]:
+            st.markdown(f"- {note}")
+
+    if plan.get("matchup_insights"):
+        st.markdown("#### Matchup Insights")
+        for note in plan["matchup_insights"]:
+            st.markdown(f"- {note}")
 
     if plan.get("awareness_notes"):
         st.markdown("#### Key Facts Driving This Call")
@@ -235,7 +269,7 @@ def _select_live_reference(manual_reference: str | None) -> str | None:
     }
     selected_label = st.selectbox("Detected live matches", list(options.keys()), index=0)
     selected_match = options[selected_label]
-    return match_reference or selected_match.get("match_id") or selected_match.get("source_url")
+    return match_reference or selected_match.get("source_url") or selected_match.get("match_id")
 
 
 def _render_sidebar() -> tuple[str, bool, int, str, str | None, bool]:
@@ -259,14 +293,26 @@ def _render_sidebar() -> tuple[str, bool, int, str, str | None, bool]:
 
 
 def _render_snapshot(state: dict) -> None:
-    st.subheader("Live Match Snapshot")
+    st.subheader("Match Snapshot")
     total_overs = int(state.get("total_overs") or 20)
     st.markdown(
         f"**{state.get('batting_team', 'Unknown')}** vs **{state.get('bowling_team', 'Unknown')}**  \\n"
         f"Score: `{state['runs']}/{state['wickets']}` in `{state['overs']}` overs"
     )
+
+    highlight = state.get("result_summary") or state.get("status")
+    if highlight:
+        if state.get("is_match_complete"):
+            st.success(highlight)
+        elif state.get("is_innings_complete"):
+            st.info(highlight)
+        else:
+            st.caption(highlight)
+
     if total_overs != 20:
         st.warning(f"Rain-impacted match: reduced to **{total_overs} overs per side**.")
+    if state.get("upcoming_phase_note") and not state.get("is_match_complete"):
+        st.info(state["upcoming_phase_note"])
     if state.get("conditions_note"):
         st.caption(state["conditions_note"])
     if state.get("striker") or state.get("bowler"):
@@ -310,7 +356,8 @@ def main() -> None:
 
     match_key = get_match_key(state)
     _render_snapshot(state)
-    _render_pre_match_advice(state)
+    if enriched_state.get("is_pre_match"):
+        _render_pre_match_advice(state)
     _render_metrics(enriched_state)
     _render_agent_loop(agent_output)
     _render_reflection(agent_output)

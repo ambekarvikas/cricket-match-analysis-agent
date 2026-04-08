@@ -13,6 +13,9 @@ export interface MatchState {
   source?: string
   source_url?: string
   is_pre_match?: boolean
+  is_match_complete?: boolean
+  is_innings_complete?: boolean
+  result_summary?: string | null
   striker?: string
   striker_score?: string
   non_striker?: string
@@ -21,6 +24,7 @@ export interface MatchState {
   bowler_score?: string
   conditions_note?: string
   match_context?: string
+  upcoming_phase_note?: string
   // enriched fields
   phase?: string
   current_run_rate?: number
@@ -71,6 +75,12 @@ export interface StrategyPlan {
   bowling_risk_level?: string
   bowling_focus?: string
   awareness_notes?: string[]
+  batting_tactics?: string[]
+  bowling_tactics?: string[]
+  phase_watchouts?: string[]
+  matchup_insights?: string[]
+  current_batter_insight?: string
+  current_bowler_insight?: string
 }
 
 export interface AnalysisResult {

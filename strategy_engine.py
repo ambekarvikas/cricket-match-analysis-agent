@@ -49,6 +49,34 @@ def get_phase(overs: float, total_overs: float = 20) -> str:
     return "death"
 
 
+def _status_has_result(status_text: str) -> bool:
+    return any(token in status_text for token in ("won by", "beat ", "beats ", "match tied", "tied match", "no result", "abandoned"))
+
+
+def _status_has_innings_break(status_text: str) -> bool:
+    return any(token in status_text for token in ("innings break", "end of innings", "after 20 overs"))
+
+
+def _build_upcoming_phase_note(state: Dict[str, Any]) -> str:
+    phase = state.get("phase")
+    total_overs = float(state.get("total_overs") or 20)
+    balls_bowled = int(state.get("balls_bowled") or 0)
+    powerplay_limit = max(2.0, round(total_overs * 0.30, 1))
+    death_start = max(powerplay_limit + 2.0, round(total_overs * 0.75, 1))
+
+    if phase == "completed":
+        return state.get("result_summary") or "Match complete — no further live tactical action remains."
+    if phase == "innings-break":
+        return "Innings break: the fielding side should plan its first two overs of the chase and protect the straight boundary early."
+    if phase == "powerplay":
+        powerplay_balls_left = max(int(powerplay_limit * 6) - balls_bowled, 0)
+        return f"Powerplay pressure window is still open for {powerplay_balls_left} more balls, so early momentum swings are high-value."
+    if phase == "middle":
+        death_balls_away = max(int(death_start * 6) - balls_bowled, 0)
+        return f"The middle overs are about squeezing or building before the death phase begins in roughly {death_balls_away} balls."
+    return "The death phase is live, so every ball should be treated as a boundary or wicket event."
+
+
 def _estimate_par_score(total_overs: float) -> int:
     if total_overs <= 8:
         par_rr = 9.4
@@ -81,8 +109,10 @@ def _estimate_projected_total(state: Dict[str, Any]) -> int:
 def enrich_match_state(state: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(state)
     total_overs = float(enriched.get("total_overs") or 20)
-    total_balls = int(total_overs * 6)
     balls_bowled = overs_to_balls(enriched["overs"])
+    if total_overs * 6 < balls_bowled:
+        total_overs = max(20.0, float(int(enriched.get("overs") or 0) + 1))
+    total_balls = int(total_overs * 6)
     balls_left = max(total_balls - balls_bowled, 0)
     status_text = str(enriched.get("status", "")).lower()
     conditions_note = enriched.get("conditions_note") or ""
@@ -95,16 +125,8 @@ def enrich_match_state(state: Dict[str, Any]) -> Dict[str, Any]:
     enriched["total_overs"] = total_overs
     enriched["is_pre_match"] = is_pre_match
     enriched["balls_bowled"] = balls_bowled
-    enriched["balls_left"] = balls_left
-    enriched["overs_left"] = balls_to_overs(balls_left)
-    enriched["phase"] = "pre-match" if is_pre_match else get_phase(enriched["overs"], total_overs=total_overs)
     enriched["current_run_rate"] = calculate_current_rr(enriched["runs"], enriched["overs"])
     enriched["wickets_in_hand"] = max(10 - enriched["wickets"], 0)
-    enriched["match_context"] = (
-        f"Rain-shortened to {int(total_overs)} overs per side. {conditions_note}".strip()
-        if total_overs != 20
-        else (conditions_note.strip() or "Standard 20-over match")
-    )
 
     target = enriched.get("target")
     if target is not None:
@@ -114,6 +136,46 @@ def enrich_match_state(state: Dict[str, Any]) -> Dict[str, Any]:
     else:
         enriched["runs_needed"] = None
         enriched["required_run_rate"] = None
+
+    innings_complete = balls_bowled >= total_balls or enriched.get("wickets", 0) >= 10 or _status_has_innings_break(status_text)
+    match_complete = _status_has_result(status_text)
+    if target is not None and enriched.get("runs_needed") is not None:
+        if enriched["runs_needed"] <= 0 or balls_left <= 0:
+            innings_complete = True
+            match_complete = True
+
+    if innings_complete or match_complete:
+        balls_left = 0
+
+    enriched["balls_left"] = balls_left
+    enriched["overs_left"] = balls_to_overs(balls_left)
+    enriched["is_innings_complete"] = bool(innings_complete)
+    enriched["is_match_complete"] = bool(match_complete)
+    enriched["result_summary"] = (
+        enriched.get("status") if match_complete else "Innings complete — the chase setup is now clear." if innings_complete and target is None else None
+    )
+
+    if is_pre_match:
+        enriched["phase"] = "pre-match"
+    elif match_complete:
+        enriched["phase"] = "completed"
+    elif innings_complete and target is None:
+        enriched["phase"] = "innings-break"
+    else:
+        enriched["phase"] = get_phase(enriched["overs"], total_overs=total_overs)
+
+    base_context = (
+        f"Rain-shortened to {int(total_overs)} overs per side. {conditions_note}".strip()
+        if total_overs != 20
+        else (conditions_note.strip() or "Standard 20-over match")
+    )
+    if match_complete and enriched.get("result_summary"):
+        enriched["match_context"] = f"{base_context} Result: {enriched['result_summary']}"
+    elif innings_complete and target is None:
+        enriched["match_context"] = f"{base_context} First innings complete — chase preparation phase."
+    else:
+        enriched["match_context"] = base_context
+    enriched["upcoming_phase_note"] = _build_upcoming_phase_note(enriched)
 
     enriched["par_score"] = _estimate_par_score(total_overs)
     enriched["projected_total"] = _estimate_projected_total(enriched)
@@ -130,8 +192,20 @@ def enrich_match_state(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def estimate_win_probability(state: Dict[str, Any]) -> Optional[int]:
-    """Heuristic win probability for pre-match, first-innings, and chase states."""
+    """Heuristic win probability for pre-match, first-innings, chase, and completed states."""
     if state.get("is_pre_match"):
+        return 50
+
+    if state.get("is_match_complete"):
+        status_text = str(state.get("status", "")).lower()
+        batting_team = str(state.get("batting_team", "")).lower()
+        bowling_team = str(state.get("bowling_team", "")).lower()
+        if state.get("target") is not None:
+            return 99 if (state.get("runs_needed") or 0) <= 0 else 1
+        if batting_team and batting_team in status_text and "won by" in status_text:
+            return 99
+        if bowling_team and bowling_team in status_text and "won by" in status_text:
+            return 1
         return 50
 
     if state.get("target") is None:
@@ -255,6 +329,115 @@ def _infer_bowler_style(name: Optional[str]) -> str:
     if any(token in lowered for token in ("bumrah", "boult", "archer", "thakur", "chahar", "shami", "arshdeep", "harshal")):
         return "pace"
     return "pace"
+
+
+def _summarize_current_batter(state: Dict[str, Any]) -> str:
+    striker = state.get("striker")
+    striker_score = state.get("striker_score")
+    if not striker or not striker_score:
+        return ""
+
+    runs, balls, strike_rate = _parse_batter_score(striker_score)
+    if balls <= 0:
+        return ""
+    if balls <= 6:
+        return f"{striker} is still new at {runs}({balls}), so the next few balls should test his early scoring options and temperament."
+    if strike_rate >= 170:
+        return f"{striker} is dominating at {runs}({balls}) with a strike rate of {strike_rate:.0f}, so the batting side should maximize his exposure against the weaker matchup."
+    if strike_rate <= 110:
+        return f"{striker} is below tempo at {runs}({balls}), so strike rotation or a change in matchup is needed quickly."
+    return f"{striker} is reasonably set at {runs}({balls}), which gives the batting side a stable anchor for the next phase."
+
+
+def _summarize_current_bowler(state: Dict[str, Any]) -> str:
+    bowler = state.get("bowler")
+    bowler_score = state.get("bowler_score")
+    if not bowler or not bowler_score:
+        return ""
+
+    overs_bowled, _, wickets, economy = _parse_bowler_figures(bowler_score)
+    if overs_bowled <= 0:
+        return ""
+    if wickets >= 1 and economy <= 8:
+        return f"{bowler} is controlling the contest at {bowler_score}, so the field should stay attacking around his wicket-taking length."
+    if economy >= 10:
+        return f"{bowler} is leaking {economy:.1f} an over at {bowler_score}, so the captain should change pace profile, line, or boundary-side protection immediately."
+    return f"{bowler} has mixed returns at {bowler_score}, so his next plan should be guided by the current batter matchup rather than a fixed template."
+
+
+def _build_detailed_tactics(state: Dict[str, Any]) -> Dict[str, Any]:
+    batting_tactics: list[str] = []
+    bowling_tactics: list[str] = []
+    phase_watchouts: list[str] = []
+    matchup_insights: list[str] = []
+
+    phase = state.get("phase")
+    runs_needed = state.get("runs_needed")
+    rrr = state.get("required_run_rate") or 0
+    wickets_in_hand = state.get("wickets_in_hand") or 0
+
+    if phase == "completed":
+        phase_watchouts.append(state.get("result_summary") or "Match complete.")
+        batting_tactics.append("No further live batting action remains; review which over or partnership decided the result.")
+        bowling_tactics.append("No further live bowling action remains; review which spell created or lost scoreboard pressure.")
+    elif phase == "innings-break":
+        batting_tactics.append("The batting side should review which scoring zones produced the boundary overs and which risks cost wickets.")
+        bowling_tactics.append("The fielding side should plan the first two overs of the chase and hold back its best death bowler for the finish.")
+        phase_watchouts.append(f"The first innings has ended at {state.get('runs')}; par for this match length is around {state.get('par_score')}.")
+    elif phase == "powerplay":
+        batting_tactics.extend([
+            "Keep one attacking batter on strike for at least four of the next six balls.",
+            "Target width and overpitched pace, but avoid gifting a wicket to the best new-ball bowler.",
+        ])
+        bowling_tactics.extend([
+            "Attack the top of off stump and keep at least one catching option in front of the wicket while the ball is hard.",
+            "If swing disappears, switch to wobble-seam or hard lengths rather than feeding slot balls.",
+        ])
+        phase_watchouts.append("Field restrictions are still active, so one loose over can shift the game quickly.")
+    elif phase == "middle":
+        batting_tactics.extend([
+            "Treat the next over as a platform over: one safe boundary option plus hard-run twos is enough.",
+            "Avoid back-to-back dot balls that push the chase into a boundary-only equation.",
+        ])
+        bowling_tactics.extend([
+            "Dry up the easy single to force a riskier release shot against the longer side of the ground.",
+            "Use spin or cutters into the pitch if the set batter is lining up pace-on deliveries.",
+        ])
+        phase_watchouts.append("The middle overs decide whether the death overs begin with control or panic.")
+    else:
+        batting_tactics.extend([
+            "Make sure the best finisher faces as many of the next six balls as possible.",
+            "Target one side of the ground and commit to the boundary options there rather than swinging at everything.",
+        ])
+        bowling_tactics.extend([
+            "Miss full and wide rather than length in the slot, and force the batter to hit square of the wicket.",
+            "Protect the shorter side and keep one yorker or slower-ball option ready every over.",
+        ])
+        phase_watchouts.append("In the death overs, every ball should be treated as either a boundary chance or a wicket chance.")
+
+    if runs_needed is not None and phase not in {"completed", "innings-break"}:
+        if rrr >= 12:
+            batting_tactics.append("The asking rate is now extreme, so the batting side must pre-identify the bowler and ball to attack rather than waiting passively.")
+            bowling_tactics.append("The chase is under severe pressure, so protect the obvious boundary zones and force low-percentage power shots.")
+        elif rrr <= 7 and wickets_in_hand >= 5:
+            batting_tactics.append("The chase is under control if wickets are preserved; there is no need for a reckless over.")
+            bowling_tactics.append("Even with a moderate asking rate, one wicket can reopen the match immediately.")
+
+    batter_insight = _summarize_current_batter(state)
+    bowler_insight = _summarize_current_bowler(state)
+    if batter_insight:
+        matchup_insights.append(batter_insight)
+    if bowler_insight:
+        matchup_insights.append(bowler_insight)
+
+    return {
+        "batting_tactics": batting_tactics,
+        "bowling_tactics": bowling_tactics,
+        "phase_watchouts": phase_watchouts,
+        "matchup_insights": matchup_insights,
+        "current_batter_insight": batter_insight,
+        "current_bowler_insight": bowler_insight,
+    }
 
 
 def _build_matchup_advice(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -473,7 +656,7 @@ def _bowling_counter_strategy(state: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def decide_strategy(state: Dict[str, Any]) -> Dict[str, str]:
+def decide_strategy(state: Dict[str, Any]) -> Dict[str, Any]:
     phase = state["phase"]
     wickets_down = state["wickets"]
     rrr = state.get("required_run_rate") or 0
@@ -484,6 +667,20 @@ def decide_strategy(state: Dict[str, Any]) -> Dict[str, str]:
             "target_runs": "8-10",
             "risk_level": "Medium",
             "focus": "Use the first over to read swing and pace before expanding strokeplay.",
+        }
+    elif phase == "completed":
+        batting_plan = {
+            "strategy": "MATCH COMPLETE",
+            "target_runs": "N/A",
+            "risk_level": "None",
+            "focus": state.get("result_summary") or "The match has ended, so the focus shifts to what decided the result.",
+        }
+    elif phase == "innings-break":
+        batting_plan = {
+            "strategy": "INNINGS BREAK RESET",
+            "target_runs": "N/A",
+            "risk_level": "Low",
+            "focus": "Use the break to map the chase or defence plan with clear matchup priorities for the first two overs.",
         }
     elif state.get("target") is None:
         batting_plan = _first_innings_strategy(phase, total_overs=state.get("total_overs") or 20)
@@ -496,6 +693,7 @@ def decide_strategy(state: Dict[str, Any]) -> Dict[str, str]:
 
     bowling_plan = _bowling_counter_strategy(state)
     matchup = _build_matchup_advice(state)
+    detail_pack = _build_detailed_tactics(state)
 
     if matchup["batting_note"]:
         batting_plan["focus"] = f"{batting_plan['focus']} {matchup['batting_note']}".strip()
@@ -506,6 +704,7 @@ def decide_strategy(state: Dict[str, Any]) -> Dict[str, str]:
         **batting_plan,
         **bowling_plan,
         "awareness_notes": matchup["awareness_notes"],
+        **detail_pack,
     }
 
 
@@ -541,6 +740,20 @@ def generate_report(state: Dict[str, Any], plan: Dict[str, str]) -> str:
     if plan.get("awareness_notes"):
         awareness_lines = "\n\nKey Awareness\n" + "\n".join(f"- {note}" for note in plan["awareness_notes"])
 
+    detail_lines = ""
+    if state.get("upcoming_phase_note"):
+        detail_lines += f"\n\nUpcoming Phase\n- {state['upcoming_phase_note']}"
+    if plan.get("current_batter_insight"):
+        detail_lines += f"\n\nCurrent Batter Insight\n- {plan['current_batter_insight']}"
+    if plan.get("current_bowler_insight"):
+        detail_lines += f"\n\nCurrent Bowler Insight\n- {plan['current_bowler_insight']}"
+    if plan.get("batting_tactics"):
+        detail_lines += "\n\nBatting Tactics\n" + "\n".join(f"- {note}" for note in plan["batting_tactics"])
+    if plan.get("bowling_tactics"):
+        detail_lines += "\n\nBowling Tactics\n" + "\n".join(f"- {note}" for note in plan["bowling_tactics"])
+    if plan.get("phase_watchouts"):
+        detail_lines += "\n\nPhase Watchouts\n" + "\n".join(f"- {note}" for note in plan["phase_watchouts"])
+
     return f"""
 Match Snapshot
 - Batting Team: {state.get('batting_team', 'Unknown')}
@@ -564,5 +777,5 @@ Batting Plan
 Bowling Counter-Plan
 - Strategy: {plan.get('bowling_strategy', 'N/A')}
 - Risk Level: {plan.get('bowling_risk_level', 'N/A')}
-- Focus: {plan.get('bowling_focus', 'N/A')}{awareness_lines}
+- Focus: {plan.get('bowling_focus', 'N/A')}{awareness_lines}{detail_lines}
 """.strip()

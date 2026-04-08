@@ -28,14 +28,19 @@ def _build_objective(state: Dict[str, Any]) -> str:
     bowling_team = state.get("bowling_team", "bowling side")
     total_overs = int(state.get("total_overs") or 20)
     match_note = f" in this rain-shortened {total_overs}-over game" if total_overs != 20 else ""
+    phase = state.get("phase")
+
     if state.get("is_pre_match"):
         return f"Prepare a toss-aware opening plan for {batting_team} and {bowling_team} before the first ball{match_note}, with rain conditions in mind."
+    if phase == "completed":
+        return f"Explain how the match result was decided for {batting_team} and {bowling_team}, highlighting the decisive phase, spell, and partnership."
+    if phase == "innings-break":
+        return f"Reset for the chase/defence transition and map the first two overs for both {batting_team} and {bowling_team}{match_note}."
     if state.get("target") is not None:
         runs_needed = state.get("runs_needed", "?")
         balls_left = state.get("balls_left", "?")
         return f"Maximize {batting_team}'s chase success by optimizing the next over and managing risk{match_note}. ({runs_needed} needed from {balls_left} balls)"
 
-    phase = state.get("phase")
     if phase == "powerplay":
         return f"Exploit field restrictions for {batting_team}{match_note} without losing control of the innings."
     if phase == "death":
@@ -61,11 +66,25 @@ def _build_observation_summary(state: Dict[str, Any]) -> str:
             f" No live score is available yet.{status_text}{context_text}"
         )
 
+    if state.get("phase") == "completed":
+        result_text = state.get("result_summary") or state.get("status") or "Result confirmed."
+        return (
+            f"Match complete: {result_text}. Final scoreboard read is {state.get('batting_team', 'Unknown')} "
+            f"{state['runs']}/{state['wickets']} after {state['overs']} overs.{context_text}{matchup_text}"
+        )
+
+    if state.get("phase") == "innings-break":
+        return (
+            f"The innings has ended with {state.get('batting_team', 'Unknown')} on {state['runs']}/{state['wickets']} after "
+            f"{state['overs']} overs, so the contest is shifting into the chase-planning window.{context_text}{matchup_text}"
+        )
+
     required_rr = state.get("required_run_rate")
     rrr_text = f", required rate {required_rr}" if required_rr is not None else ""
+    upcoming_phase_text = f" Upcoming note: {state.get('upcoming_phase_note')}" if state.get("upcoming_phase_note") else ""
     return (
         f"Observed {state.get('batting_team', 'Unknown')} at {state['runs']}/{state['wickets']} after "
-        f"{state['overs']} overs in the {state['phase']} phase, current run rate {state['current_run_rate']}{rrr_text}.{context_text}{matchup_text}"
+        f"{state['overs']} overs in the {state['phase']} phase, current run rate {state['current_run_rate']}{rrr_text}.{context_text}{matchup_text}{upcoming_phase_text}"
     )
 
 
@@ -82,6 +101,39 @@ def _build_memory_summary(history_rows: List[Dict[str, Any]]) -> str:
 
 
 def _evaluate_last_recommendation(history_rows: List[Dict[str, Any]], current_state: Dict[str, Any]) -> Dict[str, Any]:
+    if current_state.get("is_match_complete"):
+        result_text = current_state.get("result_summary") or current_state.get("status") or "Match complete."
+        return {
+            "status": "complete",
+            "headline": "Match result confirmed.",
+            "detail": f"The live phase is over. {result_text}",
+            "batting_status": "completed",
+            "bowling_status": "completed",
+            "batting_headline": "Batting innings has ended.",
+            "bowling_headline": "Bowling innings has ended.",
+            "batting_detail": "No further live batting recommendation is needed; the focus is on what phase or partnership decided the result.",
+            "bowling_detail": "No further live bowling recommendation is needed; the focus is on which spell created or lost control.",
+            "runs_scored": 0,
+            "wickets_lost": 0,
+            "overs_progress": 0.0,
+        }
+
+    if current_state.get("is_innings_complete") and current_state.get("target") is None:
+        return {
+            "status": "innings-break",
+            "headline": "First innings complete.",
+            "detail": "The agent is now evaluating the transition into the chase rather than the just-finished over.",
+            "batting_status": "completed",
+            "bowling_status": "reset",
+            "batting_headline": "Batting review complete for the innings.",
+            "bowling_headline": "Bowling reset required for the chase.",
+            "batting_detail": "The batting side has finished its innings, so the next recommendation shifts to score defence or chase planning.",
+            "bowling_detail": "The bowling side should now map its first overs of the chase and save the best death options for later.",
+            "runs_scored": 0,
+            "wickets_lost": 0,
+            "overs_progress": 0.0,
+        }
+
     if not history_rows:
         return {
             "status": "baseline",
@@ -102,26 +154,53 @@ def _evaluate_last_recommendation(history_rows: List[Dict[str, Any]], current_st
     previous_overs = float(previous.get("overs") or 0)
     current_overs = float(current_state.get("overs") or 0)
     overs_progress = current_overs - previous_overs
+    runs_scored = int((current_state.get("runs") or 0) - (previous.get("runs") or 0))
+    wickets_lost = int((current_state.get("wickets") or 0) - (previous.get("wickets") or 0))
+    low_target, high_target = _parse_target_range(previous.get("target_runs"))
 
-    if overs_progress < 0.5:
+    if overs_progress <= 0 and runs_scored == 0 and wickets_lost == 0:
         return {
             "status": "monitoring",
-            "headline": "Current over still in progress.",
-            "detail": "The agent is still monitoring whether the previous batting and bowling recommendations are playing out.",
+            "headline": "No fresh scoreboard movement yet.",
+            "detail": "The agent is holding its current read because the score has not changed since the last refresh.",
             "batting_status": "monitoring",
             "bowling_status": "monitoring",
             "batting_headline": "Batting verdict pending.",
             "bowling_headline": "Bowling verdict pending.",
-            "batting_detail": "The over is still live.",
-            "bowling_detail": "The over is still live.",
+            "batting_detail": "No new runs or wickets since the last saved state.",
+            "bowling_detail": "No new runs or wickets since the last saved state.",
             "runs_scored": 0,
             "wickets_lost": 0,
             "overs_progress": overs_progress,
         }
 
-    runs_scored = int((current_state.get("runs") or 0) - (previous.get("runs") or 0))
-    wickets_lost = int((current_state.get("wickets") or 0) - (previous.get("wickets") or 0))
-    low_target, high_target = _parse_target_range(previous.get("target_runs"))
+    if 0 < overs_progress < 0.5:
+        batting_status = "on-track" if runs_scored >= max(low_target, 4) and wickets_lost == 0 else "under-pressure" if wickets_lost > 0 else "mixed"
+        bowling_status = "excellent" if wickets_lost > 0 else "under-pressure" if runs_scored >= max(high_target, 8) else "mixed"
+        batting_headline = "Partial over update for batting."
+        bowling_headline = "Partial over update for bowling."
+        batting_detail = (
+            f"So far in the live over, the batting side has scored {runs_scored} run(s) and lost {wickets_lost} wicket(s). "
+            f"The recommendation is being updated from the current state rather than waiting for the over to end."
+        )
+        bowling_detail = (
+            f"From the bowling perspective, {runs_scored} run(s) and {wickets_lost} wicket(s) have occurred so far in the over, "
+            f"so the field and matchup call can already be adjusted live."
+        )
+        return {
+            "status": "live-partial",
+            "headline": f"Batting: {batting_headline} | Bowling: {bowling_headline}",
+            "detail": f"{batting_detail} Bowling view: {bowling_detail}",
+            "batting_status": batting_status,
+            "bowling_status": bowling_status,
+            "batting_headline": batting_headline,
+            "bowling_headline": bowling_headline,
+            "batting_detail": batting_detail,
+            "bowling_detail": bowling_detail,
+            "runs_scored": runs_scored,
+            "wickets_lost": wickets_lost,
+            "overs_progress": overs_progress,
+        }
 
     if wickets_lost == 0 and runs_scored > high_target:
         batting_status = "excellent"
@@ -215,6 +294,14 @@ def _reflect_on_previous_advice(evaluation: Dict[str, Any], state: Dict[str, Any
             "reflection": "The current over is still underway, so the agent is watching both sides before changing aggression levels.",
         }
 
+    if status == "live-partial":
+        return {
+            "verdict": "Live partial read",
+            "batting_adjustment": "Adjust strike and tempo from the current ball-by-ball pressure",
+            "bowling_adjustment": "Change field or bowler plan immediately if the matchup is drifting",
+            "reflection": "This refresh is mid-over, so the agent is already reacting to the live scoreboard movement instead of waiting for the over break.",
+        }
+
     if batting_status in {"excellent", "on-track"} and bowling_status in {"excellent", "on-track"}:
         return {
             "verdict": "Yes, for both sides mostly",
@@ -290,7 +377,17 @@ def _build_action_summary(plan: Dict[str, str]) -> str:
     awareness = ""
     if plan.get("awareness_notes"):
         awareness = f" Key facts: {' | '.join(plan['awareness_notes'])}."
-    return batting_summary + bowling_summary + awareness
+
+    richer_notes: list[str] = []
+    if plan.get("current_batter_insight"):
+        richer_notes.append(f"Current batter: {plan['current_batter_insight']}")
+    if plan.get("current_bowler_insight"):
+        richer_notes.append(f"Current bowler: {plan['current_bowler_insight']}")
+    if plan.get("phase_watchouts"):
+        richer_notes.append(f"Phase watchouts: {' | '.join(plan['phase_watchouts'])}")
+
+    detail_summary = f" {' '.join(richer_notes)}" if richer_notes else ""
+    return batting_summary + bowling_summary + awareness + detail_summary
 
 
 def run_agent_cycle(state: Dict[str, Any]) -> Dict[str, Any]:
