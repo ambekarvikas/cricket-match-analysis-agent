@@ -1,87 +1,122 @@
-<<<<<<< HEAD
 # Cricket Match Analysis Agent
 
-A practical cricket project to learn **agentic AI concepts** using a real observe-recall-evaluate-act strategy loop.
+A cricket strategy agent built on an **observe → recall → evaluate → reflect → act** loop, exposing a **FastAPI backend** and a **React + Vite frontend**.
 
-## Current scope
-- hardcoded match states
-- Cricbuzz live match adapter
-- rule-based strategy engine
-- win-probability heuristic
-- terminal output
+---
 
-## Files
-- `app.py` - terminal entry point with hardcoded or live mode
-- `data_source.py` - hardcoded scenarios plus Cricbuzz live-feed parsing
-- `strategy_engine.py` - state enrichment, strategy logic, explanation output
+## Architecture
 
-## Install
+```
+cricket-match-analysis-agent/
+├── backend/
+│   ├── main.py                  # FastAPI app entry point (CORS, routers)
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── matches.py       # GET /api/matches/*
+│   │   │   ├── analysis.py      # POST /api/analysis/*
+│   │   │   └── history.py       # GET /api/history/*
+│   │   └── schemas/             # Pydantic request/response models
+│   ├── services/                # Service Manager layer
+│   │   ├── match_service.py     # Orchestrates agent cycle + history
+│   │   ├── data_service.py      # Wraps data_source
+│   │   └── history_service.py   # Wraps history_store
+│   ├── core/                    # Pure stateless agent logic
+│   │   ├── agent_core.py
+│   │   ├── strategy_engine.py
+│   │   ├── prematch_advisor.py
+│   │   ├── data_source.py
+│   │   └── history_store.py
+│   ├── data/                    # strategy_history.jsonl (persisted)
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── api/client.ts        # Typed API wrappers
+│   │   ├── hooks/               # useMatchAnalysis, useLiveMatches
+│   │   └── components/          # Sidebar, MatchSnapshot, MetricsPanel,
+│   │                            # AgentLoop, ReflectionPanel, StrategyView,
+│   │                            # PreMatchAdvisor, HistoryTable
+│   ├── package.json
+│   └── vite.config.ts
+├── app.py                       # (legacy) CLI entry point
+├── streamlit_app.py             # (legacy) Streamlit UI
+└── README.md
+```
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/matches/scenarios` | List hardcoded scenario names |
+| GET | `/api/matches/scenario/{name}` | Get a hardcoded scenario state |
+| GET | `/api/matches/live` | List live matches from Cricbuzz |
+| GET | `/api/matches/live/{match_reference}` | Fetch a specific live match |
+| POST | `/api/analysis/run` | Run agent cycle on a match state |
+| POST | `/api/analysis/prematch` | Get pre-match advice (toss + XI) |
+| GET | `/api/history/{match_key}` | Fetch over-by-over history |
+
+---
+
+## Running the Backend
+
 ```bash
+cd backend
 pip install -r requirements.txt
+# from the repo root:
+uvicorn backend.main:app --reload --port 8000
 ```
 
-## Run terminal app
+Interactive docs: http://localhost:8000/docs
+
+---
+
+## Running the Frontend
+
 ```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The Vite dev server proxies `/api` → `http://localhost:8000`.
+
+---
+
+## Agent Loop
+
+Each analysis request runs the full agent cycle:
+
+1. **Observe** — read the current live or hardcoded match state
+2. **Recall** — load prior over-level memory from `backend/data/strategy_history.jsonl`
+3. **Evaluate** — score the last batting and bowling recommendation
+4. **Reflect** — decide whether to adjust aggression or hold course
+5. **Act** — produce a fresh batting plan and bowling counter-plan
+
+---
+
+## History Storage
+
+Each completed over is saved to `backend/data/strategy_history.jsonl`.
+Each entry contains the score, win probability, strategy, and a plain-English
+`change_reason` explaining what shifted, e.g.:
+
+> *Win probability dropped from 62% to 54% because a wicket fell and dot-ball pressure built up in a low-scoring over.*
+
+---
+
+## Legacy CLI / Streamlit
+
+The original `app.py` (CLI) and `streamlit_app.py` are kept for reference.
+They import from the root-level Python files which remain unchanged.
+
+```bash
+# CLI
+pip install -r requirements.txt
 python app.py
-```
 
-## Run Streamlit dashboard
-```bash
+# Streamlit
 streamlit run streamlit_app.py
 ```
-
-## Live mode flow
-1. choose `2` in the CLI
-2. let it detect the current cricket match from Cricbuzz
-3. optionally paste a Cricbuzz match URL or `match_id`
-4. enable **auto-refresh** if you want continuous updates
-5. get the strategy recommendation for the current state every few seconds
-
-## Auto-refresh mode
-- press `Y` when asked to enable live auto-refresh
-- default interval is `30` seconds
-- minimum enforced interval is `10` seconds
-- stop the loop anytime with `Ctrl+C`
-
-## Agent loop
-The app now behaves like a lightweight cricket agent:
-1. **Observe** the current live match state
-2. **Recall** prior over-level memory from saved history
-3. **Evaluate** whether the last recommendation worked
-4. **Reflect** on whether it should become more aggressive or more conservative
-5. **Act** with fresh plans for both the batting team and the bowling team
-
-## Example output
-- pre-match toss recommendation for rain or dew conditions
-- probable or confirmed playing XI from the source when available
-- match snapshot
-- batting-side and bowling-side win probability
-- agent objective and confidence
-- evaluation of the last recommendation
-- reflection on whether the previous advice was correct
-- batting plan and bowling counter-plan
-- source URL for the live feed
-- saved recommendation history by over with win% change reasons
-
-## History storage
-Saved snapshots are written to:
-- `data/strategy_history.jsonl`
-
-This now tracks the recommendation **over by over**, not ball by ball.
-It also stores a plain-English `change_reason`, for example:
-- `Win probability dropped because of a wicket and dot-ball pressure in a low-scoring over.`
-
-## Suggested roadmap
-1. improve rules using phase, wickets, and pressure
-2. auto-refresh every 30-60 seconds
-3. store previous overs and recommendations
-4. add an LLM only for natural-language explanation
-5. later convert into a multi-agent workflow
-
-## Important note
-Keep the **state schema** stable when you move from hardcoded data to live data. That will let you reuse the same strategy logic.
-
-This live adapter is a **best-effort scraper**, since Cricbuzz does not expose an official public developer API for this use case.
-=======
-# cricket-match-analysis-agent
->>>>>>> 3f64163b6f7b98d91d6cef5eb65506ddaad45f5c
