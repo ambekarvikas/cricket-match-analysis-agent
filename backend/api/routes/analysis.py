@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 @router.post("/run", response_model=AnalysisResponse)
 def run_analysis_endpoint(request: AnalysisRequest) -> Dict[str, Any]:
     try:
-        return run_analysis(request.state.model_dump())
+        return run_analysis(request.state.model_dump(), session_id=request.session_id)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -100,8 +100,44 @@ export interface WhatIfScenario {
   focus?: string
 }
 
+export interface SessionSummary {
+  session_id: string
+  match_key?: string
+  snapshot_count: number
+  latest_score?: string | null
+  latest_phase?: string | null
+  momentum_delta?: number
+  trend_summary: string
+  latest_recommendation?: string | null
+  decision_window?: string | null
+  best_scenario?: WhatIfScenario | null
+  last_updated?: string | null
+}
+
+export interface SessionEntry {
+  timestamp?: string
+  session_id?: string
+  match_key?: string
+  score?: string
+  overs?: number
+  phase?: string
+  win_probability?: number
+  recommended_action?: string
+  bowling_recommended_action?: string
+  [key: string]: unknown
+}
+
+export interface SessionResult {
+  session_id: string
+  summary: SessionSummary
+  entries: SessionEntry[]
+}
+
 export interface AnalysisResult {
   match_key: string
+  session_id?: string
+  cache_status?: string
+  session_summary?: SessionSummary | null
   state: MatchState
   plan: StrategyPlan
   objective: string

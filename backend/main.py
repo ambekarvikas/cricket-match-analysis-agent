@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import analysis, history, matches
+from backend.api.routes import analysis, history, matches, session
 
 app = FastAPI(
     title="Cricket Match Analysis Agent API",
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(matches.router)
 app.include_router(analysis.router)
 app.include_router(history.router)
+app.include_router(session.router)
 
 
 @app.get("/health")

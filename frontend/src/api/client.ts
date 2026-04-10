@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AnalysisResult, HistoryEntry, MatchState, PreMatchResult } from '../types'
+import type { AnalysisResult, HistoryEntry, MatchState, PreMatchResult, SessionResult } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -23,8 +23,11 @@ export async function fetchLiveMatch(matchReference: string): Promise<MatchState
   return data
 }
 
-export async function runAnalysis(state: MatchState): Promise<AnalysisResult> {
-  const { data } = await api.post<AnalysisResult>('/analysis/run', { state })
+export async function runAnalysis(state: MatchState, sessionId?: string): Promise<AnalysisResult> {
+  const { data } = await api.post<AnalysisResult>('/analysis/run', {
+    state,
+    session_id: sessionId,
+  })
   return data
 }
 
@@ -39,4 +42,11 @@ export async function fetchHistory(matchKey: string, limit = 50): Promise<Histor
     { params: { limit } }
   )
   return data.entries
+}
+
+export async function fetchSession(sessionId: string, limit = 30): Promise<SessionResult> {
+  const { data } = await api.get<SessionResult>(`/session/${encodeURIComponent(sessionId)}`, {
+    params: { limit },
+  })
+  return data
 }

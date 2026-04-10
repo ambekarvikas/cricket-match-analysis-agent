@@ -47,6 +47,9 @@ class StrategyPlan(BaseModel):
 
 class AnalysisResponse(BaseModel):
     match_key: str
+    session_id: Optional[str] = None
+    cache_status: Optional[str] = None
+    session_summary: Optional[Dict[str, Any]] = None
     state: Dict[str, Any]
     plan: Dict[str, Any]
     objective: str
@@ -64,6 +67,7 @@ class AnalysisResponse(BaseModel):
 
 class AnalysisRequest(BaseModel):
     state: MatchState
+    session_id: Optional[str] = None
 
 
 class TossRecommendation(BaseModel):

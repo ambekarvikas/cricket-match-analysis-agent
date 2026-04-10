@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchHistory, fetchLiveMatch, fetchScenarioState, runAnalysis } from '../api/client'
-import type { AnalysisResult, HistoryEntry, MatchState, SourceMode } from '../types'
+import { fetchHistory, fetchLiveMatch, fetchScenarioState, fetchSession, runAnalysis } from '../api/client'
+import type { AnalysisResult, HistoryEntry, MatchState, SessionResult, SourceMode } from '../types'
 
 interface UseMatchAnalysisOptions {
   mode: SourceMode
@@ -13,6 +13,7 @@ interface UseMatchAnalysisOptions {
 interface UseMatchAnalysisResult {
   analysis: AnalysisResult | null
   history: HistoryEntry[]
+  session: SessionResult | null
   loading: boolean
   error: string | null
   refresh: () => void
@@ -27,9 +28,11 @@ export function useMatchAnalysis({
 }: UseMatchAnalysisOptions): UseMatchAnalysisResult {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [session, setSession] = useState<SessionResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
 
   const doFetch = useCallback(async () => {
     setLoading(true)
@@ -41,8 +44,17 @@ export function useMatchAnalysis({
       } else {
         state = await fetchScenarioState(scenario ?? 'chase_pressure')
       }
-      const result = await runAnalysis(state)
+      const result = await runAnalysis(state, sessionIdRef.current ?? undefined)
       setAnalysis(result)
+
+      if (result.session_id) {
+        sessionIdRef.current = result.session_id
+        const sessionData = await fetchSession(result.session_id)
+        setSession(sessionData)
+      } else {
+        setSession(null)
+      }
+
       const hist = await fetchHistory(result.match_key)
       setHistory(hist)
     } catch (err: unknown) {
@@ -58,6 +70,11 @@ export function useMatchAnalysis({
   }, [doFetch])
 
   useEffect(() => {
+    sessionIdRef.current = null
+    setSession(null)
+  }, [mode, scenario, matchReference])
+
+  useEffect(() => {
     void doFetch()
   }, [doFetch])
 
@@ -71,5 +88,5 @@ export function useMatchAnalysis({
     }
   }, [analysis, autoRefresh, mode, refreshInterval, doFetch])
 
-  return { analysis, history, loading, error, refresh }
+  return { analysis, history, session, loading, error, refresh }
 }

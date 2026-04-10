@@ -6,6 +6,7 @@ import { MatchSnapshot } from './components/MatchSnapshot'
 import { MetricsPanel } from './components/MetricsPanel'
 import { PreMatchAdvisor } from './components/PreMatchAdvisor'
 import { ReflectionPanel } from './components/ReflectionPanel'
+import { SessionPanel } from './components/SessionPanel'
 import { Sidebar } from './components/Sidebar'
 import { StrategyView } from './components/StrategyView'
 import { WhatIfPanel } from './components/WhatIfPanel'
@@ -29,7 +30,7 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  const { analysis, history, loading, error, refresh } = useMatchAnalysis({
+  const { analysis, history, session, loading, error, refresh } = useMatchAnalysis({
     mode,
     scenario,
     matchReference: matchReference || undefined,
@@ -85,6 +86,7 @@ export default function App() {
             <MetricsPanel state={analysis.state} />
             <AgentLoop analysis={analysis} />
             <ReflectionPanel analysis={analysis} />
+            <SessionPanel analysis={analysis} session={session} />
             <StrategyView analysis={analysis} />
             <WhatIfPanel scenarios={analysis.what_if ?? []} />
             {analysis.history_entry?.change_reason && (
