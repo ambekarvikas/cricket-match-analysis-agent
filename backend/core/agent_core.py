@@ -386,8 +386,14 @@ def _build_action_summary(plan: Dict[str, str]) -> str:
     if plan.get("phase_watchouts"):
         richer_notes.append(f"Phase watchouts: {' | '.join(plan['phase_watchouts'])}")
 
+    recommendation_summary = ""
+    if plan.get("recommended_action"):
+        recommendation_summary += f" Next move: {plan['recommended_action']}"
+    if plan.get("bowling_recommended_action"):
+        recommendation_summary += f" Bowling move: {plan['bowling_recommended_action']}"
+
     detail_summary = f" {' '.join(richer_notes)}" if richer_notes else ""
-    return batting_summary + bowling_summary + awareness + detail_summary
+    return batting_summary + bowling_summary + awareness + recommendation_summary + detail_summary
 
 
 def run_agent_cycle(state: Dict[str, Any]) -> Dict[str, Any]:

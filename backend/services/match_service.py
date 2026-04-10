@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from backend.core.agent_core import run_agent_cycle
 from backend.core.history_store import build_history_entry, get_match_key
 from backend.core.prematch_advisor import build_pre_match_advice
+from backend.core.simulation_engine import generate_what_if_scenarios
 from backend.services.data_service import get_live_match, get_scenario_state
 from backend.services.history_service import persist_entry
 
@@ -28,6 +29,7 @@ def run_analysis(state: Dict[str, Any]) -> Dict[str, Any]:
         "confidence": agent_output["confidence"],
         "action_summary": agent_output["action_summary"],
         "reasoning_steps": agent_output["reasoning_steps"],
+        "what_if": generate_what_if_scenarios(enriched_state),
         "history_entry": entry,
         "history_saved": history_saved,
     }

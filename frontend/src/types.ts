@@ -81,6 +81,23 @@ export interface StrategyPlan {
   matchup_insights?: string[]
   current_batter_insight?: string
   current_bowler_insight?: string
+  recommended_action?: string
+  bowling_recommended_action?: string
+  decision_window?: string
+  priority?: string
+  decision_rationale?: string[]
+  avoid_now?: string[]
+}
+
+export interface WhatIfScenario {
+  label: string
+  summary: string
+  projected_score: string
+  win_probability: number
+  win_probability_delta: number
+  impact: string
+  recommended_response?: string
+  focus?: string
 }
 
 export interface AnalysisResult {
@@ -95,6 +112,7 @@ export interface AnalysisResult {
   confidence: number
   action_summary: string
   reasoning_steps: ReasoningStep[]
+  what_if?: WhatIfScenario[]
   history_entry: Record<string, unknown>
   history_saved: boolean
 }

@@ -9,6 +9,7 @@ from agent_core import run_agent_cycle
 from data_source import SAMPLE_MATCHES, get_hardcoded_match_state, get_live_match_state_from_cricbuzz, list_live_matches_from_cricbuzz
 from history_store import build_history_entry, get_match_key, load_history, save_history_entry
 from prematch_advisor import build_pre_match_advice
+from simulation_engine import generate_what_if_scenarios
 
 
 LIVE_MODE = "Live Cricbuzz"
@@ -140,6 +141,14 @@ def _render_reflection(agent_output: dict) -> None:
 def _render_strategy(plan: dict, enriched_state: dict) -> None:
     st.subheader("Team Perspectives")
 
+    if plan.get("recommended_action") or plan.get("bowling_recommended_action"):
+        st.markdown("#### Decision Recommendation")
+        st.info(
+            f"Batting: {plan.get('recommended_action', 'N/A')}\n\n"
+            f"Bowling: {plan.get('bowling_recommended_action', 'N/A')}\n\n"
+            f"Window: {plan.get('decision_window', 'next over')} | Priority: {plan.get('priority', 'balanced')}"
+        )
+
     if enriched_state.get("upcoming_phase_note"):
         st.info(f"Upcoming phase read: {enriched_state['upcoming_phase_note']}")
 
@@ -194,6 +203,18 @@ def _render_strategy(plan: dict, enriched_state: dict) -> None:
         st.markdown("#### Key Facts Driving This Call")
         for note in plan["awareness_notes"]:
             st.markdown(f"- {note}")
+
+
+def _render_what_if(enriched_state: dict) -> None:
+    st.subheader("What-If Simulation")
+    scenarios = generate_what_if_scenarios(enriched_state)
+    columns = st.columns(min(len(scenarios), 4)) if scenarios else []
+    for idx, scenario in enumerate(scenarios):
+        with columns[idx % len(columns)]:
+            st.markdown(f"**{scenario['label']}**")
+            st.caption(scenario.get("summary", ""))
+            st.metric("Win %", f"{scenario.get('win_probability', 'N/A')}%", delta=f"{scenario.get('win_probability_delta', 0)}%")
+            st.markdown(f"`{scenario.get('projected_score', 'N/A')}`")
 
 
 def _render_over_change(entry: dict, saved: bool) -> None:
@@ -362,6 +383,7 @@ def main() -> None:
     _render_agent_loop(agent_output)
     _render_reflection(agent_output)
     _render_strategy(plan, enriched_state)
+    _render_what_if(enriched_state)
     _render_over_change(latest_entry, history_saved)
     _render_history(match_key)
 

@@ -25,6 +25,34 @@ export function StrategyView({ analysis }: StrategyViewProps) {
     <div className="bg-gray-900 rounded-lg p-4 border border-gray-800 space-y-3">
       <h2 className="text-base font-semibold text-emerald-400">Team Perspectives</h2>
 
+      {(plan.recommended_action || plan.bowling_recommended_action) && (
+        <div className="bg-indigo-900/20 border border-indigo-800 rounded-lg p-3 space-y-2 text-xs text-indigo-100">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-semibold text-indigo-300">Decision Recommendation</span>
+            {plan.priority && (
+              <span className="uppercase tracking-wide text-[10px] px-2 py-0.5 rounded bg-indigo-800/60">
+                {plan.priority}
+              </span>
+            )}
+            {plan.decision_window && (
+              <span className="text-[11px] text-indigo-200">Window: {plan.decision_window}</span>
+            )}
+          </div>
+          {plan.recommended_action && (
+            <div>
+              <span className="font-semibold">Batting next move: </span>
+              {plan.recommended_action}
+            </div>
+          )}
+          {plan.bowling_recommended_action && (
+            <div>
+              <span className="font-semibold">Bowling next move: </span>
+              {plan.bowling_recommended_action}
+            </div>
+          )}
+        </div>
+      )}
+
       {state.upcoming_phase_note && (
         <div className="text-xs text-cyan-200 bg-cyan-900/20 border border-cyan-800 rounded-lg p-3">
           <span className="font-semibold">Upcoming phase read: </span>
@@ -90,6 +118,8 @@ export function StrategyView({ analysis }: StrategyViewProps) {
       </div>
 
       {renderList('Phase Watchouts', plan.phase_watchouts, 'text-cyan-300')}
+      {renderList('Decision Rationale', plan.decision_rationale, 'text-indigo-300')}
+      {renderList('Avoid Right Now', plan.avoid_now, 'text-red-300')}
       {renderList('Matchup Insights', plan.matchup_insights, 'text-purple-300')}
       {renderList('Key Facts', plan.awareness_notes)}
     </div>

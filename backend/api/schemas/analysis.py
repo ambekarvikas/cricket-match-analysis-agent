@@ -57,6 +57,7 @@ class AnalysisResponse(BaseModel):
     confidence: int
     action_summary: str
     reasoning_steps: List[Dict[str, str]]
+    what_if: List[Dict[str, Any]] = []
     history_entry: Dict[str, Any]
     history_saved: bool
 

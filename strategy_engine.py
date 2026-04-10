@@ -656,6 +656,114 @@ def _bowling_counter_strategy(state: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
+def _build_decision_recommendation(state: Dict[str, Any]) -> Dict[str, Any]:
+    phase = state.get("phase")
+    rrr = state.get("required_run_rate") or 0
+    wickets_in_hand = state.get("wickets_in_hand") or 0
+
+    if phase == "completed":
+        return {
+            "recommended_action": "Review the decisive over, spell, and partnership rather than forcing a live recommendation.",
+            "bowling_recommended_action": "Review where scoreboard pressure was created or released.",
+            "decision_window": "post-match review",
+            "priority": "closed",
+            "decision_rationale": [state.get("result_summary") or "The result is already decided."],
+            "avoid_now": ["No live tactical intervention remains."],
+        }
+
+    if phase == "innings-break":
+        return {
+            "recommended_action": "Use the break to map the first two overs of the chase and decide which matchup to target first.",
+            "bowling_recommended_action": "Start with your highest-control bowler and save one premium death over for the finish.",
+            "decision_window": "first 2 overs after restart",
+            "priority": "high",
+            "decision_rationale": [
+                f"The innings has ended at {state.get('runs')}, so the next phase is about chase setup rather than live repair.",
+                f"Par for this match length is around {state.get('par_score')}.",
+            ],
+            "avoid_now": ["Do not enter the chase without a clear first-over plan.", "Do not burn all death resources too early."],
+        }
+
+    if state.get("target") is not None:
+        if rrr >= 12:
+            return {
+                "recommended_action": "Attack one pre-identified over immediately and keep the set batter on strike for most of the next six balls.",
+                "bowling_recommended_action": "Use your best boundary-denial bowler now and crowd the strongest hitting arc.",
+                "decision_window": "next 6 balls",
+                "priority": "urgent",
+                "decision_rationale": [
+                    f"The asking rate is {rrr}, so the chase cannot drift for even one quiet over.",
+                    "The batting side must choose where to attack rather than waiting for a release ball.",
+                ],
+                "avoid_now": ["Do not allow two low-scoring overs in a row.", "Do not expose a new batter unnecessarily."],
+            }
+        if wickets_in_hand <= 3:
+            return {
+                "recommended_action": "Prioritize strike rotation and one boundary option, because another wicket would end the chase.",
+                "bowling_recommended_action": "Keep the stumps in play and force the tail to hit against the larger boundary.",
+                "decision_window": "next over",
+                "priority": "high",
+                "decision_rationale": [
+                    f"Only {wickets_in_hand} wickets remain, so survival and tempo must be balanced carefully.",
+                ],
+                "avoid_now": ["Do not turn every ball into a boundary attempt."],
+            }
+        if phase == "powerplay":
+            return {
+                "recommended_action": "Use the field restrictions now, but keep one stable batter in reserve for the middle overs.",
+                "bowling_recommended_action": "Attack the top of off and keep one catching option active while the ball is hard.",
+                "decision_window": "powerplay",
+                "priority": "high",
+                "decision_rationale": ["Field restrictions make this the easiest scoring window of the chase."],
+                "avoid_now": ["Do not waste the powerplay with only singles."],
+            }
+        if phase == "death":
+            return {
+                "recommended_action": "Let the best finisher face the majority of the next over and commit to one side of the ground.",
+                "bowling_recommended_action": "Miss wide and full, not in the slot, and protect the shorter boundary first.",
+                "decision_window": "next 6-12 balls",
+                "priority": "urgent",
+                "decision_rationale": ["The death overs reward clarity and punish hesitation."],
+                "avoid_now": ["Do not spread the strike randomly if a set finisher is in."],
+            }
+        return {
+            "recommended_action": "Use the next over as a platform over: rotate hard and target one calculated boundary option.",
+            "bowling_recommended_action": "Dry up the easy single and force the release shot to the longer side.",
+            "decision_window": "next over",
+            "priority": "balanced",
+            "decision_rationale": ["The chase is still live, but momentum can flip with one smart over."],
+            "avoid_now": ["Do not let dot-ball pressure stack up."],
+        }
+
+    if phase == "powerplay":
+        return {
+            "recommended_action": "Press the powerplay advantage with controlled intent and keep one aggressive batter exposed.",
+            "bowling_recommended_action": "Hunt a wicket before the platform settles by attacking the corridor around off stump.",
+            "decision_window": "next 2 overs",
+            "priority": "high",
+            "decision_rationale": ["Powerplay overs set the ceiling for the rest of the innings."],
+            "avoid_now": ["Do not burn wickets chasing low-value shots."],
+        }
+    if phase == "death":
+        return {
+            "recommended_action": "Maximize boundary matchups and make sure the best finisher gets most of the strike.",
+            "bowling_recommended_action": "Protect yorker execution and slower-ball variation over pure pace-on length.",
+            "decision_window": "final overs",
+            "priority": "urgent",
+            "decision_rationale": ["This is the highest-value scoring window of the innings."],
+            "avoid_now": ["Do not leave your best hitter stranded off strike."],
+        }
+
+    return {
+        "recommended_action": "Build through the next over without letting dot-ball pressure slow the innings down.",
+        "bowling_recommended_action": "Control the middle overs by denying easy singles and changing pace profile when needed.",
+        "decision_window": "next over",
+        "priority": "balanced",
+        "decision_rationale": ["The middle phase decides whether the finish begins with control or panic."],
+        "avoid_now": ["Do not allow the game to drift into a passive pattern."],
+    }
+
+
 def decide_strategy(state: Dict[str, Any]) -> Dict[str, Any]:
     phase = state["phase"]
     wickets_down = state["wickets"]
@@ -694,6 +802,7 @@ def decide_strategy(state: Dict[str, Any]) -> Dict[str, Any]:
     bowling_plan = _bowling_counter_strategy(state)
     matchup = _build_matchup_advice(state)
     detail_pack = _build_detailed_tactics(state)
+    decision_pack = _build_decision_recommendation(state)
 
     if matchup["batting_note"]:
         batting_plan["focus"] = f"{batting_plan['focus']} {matchup['batting_note']}".strip()
@@ -705,6 +814,7 @@ def decide_strategy(state: Dict[str, Any]) -> Dict[str, Any]:
         **bowling_plan,
         "awareness_notes": matchup["awareness_notes"],
         **detail_pack,
+        **decision_pack,
     }
 
 
@@ -741,6 +851,12 @@ def generate_report(state: Dict[str, Any], plan: Dict[str, str]) -> str:
         awareness_lines = "\n\nKey Awareness\n" + "\n".join(f"- {note}" for note in plan["awareness_notes"])
 
     detail_lines = ""
+    if plan.get("recommended_action"):
+        detail_lines += f"\n\nDecision Recommendation\n- Batting: {plan['recommended_action']}"
+    if plan.get("bowling_recommended_action"):
+        detail_lines += f"\n- Bowling: {plan['bowling_recommended_action']}"
+    if plan.get("decision_window"):
+        detail_lines += f"\n- Window: {plan['decision_window']} | Priority: {plan.get('priority', 'balanced')}"
     if state.get("upcoming_phase_note"):
         detail_lines += f"\n\nUpcoming Phase\n- {state['upcoming_phase_note']}"
     if plan.get("current_batter_insight"):

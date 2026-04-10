@@ -8,6 +8,7 @@ import { PreMatchAdvisor } from './components/PreMatchAdvisor'
 import { ReflectionPanel } from './components/ReflectionPanel'
 import { Sidebar } from './components/Sidebar'
 import { StrategyView } from './components/StrategyView'
+import { WhatIfPanel } from './components/WhatIfPanel'
 import { useLiveMatches } from './hooks/useLiveMatches'
 import { useMatchAnalysis } from './hooks/useMatchAnalysis'
 import type { SourceMode } from './types'
@@ -85,6 +86,7 @@ export default function App() {
             <AgentLoop analysis={analysis} />
             <ReflectionPanel analysis={analysis} />
             <StrategyView analysis={analysis} />
+            <WhatIfPanel scenarios={analysis.what_if ?? []} />
             {analysis.history_entry?.change_reason && (
               <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3 text-sm text-blue-200">
                 <span className="font-semibold">Over-by-Over Insight: </span>
