@@ -133,6 +133,19 @@ export interface SessionResult {
   entries: SessionEntry[]
 }
 
+export interface AuthUser {
+  id: number
+  email: string
+  display_name?: string | null
+  created_at?: string | null
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  user: AuthUser
+}
+
 export interface EngineMeta {
   mode?: string
   primary_engine?: string

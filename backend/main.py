@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -11,7 +12,8 @@ from backend.api.middleware.rate_limit import (
     RATE_LIMIT_WINDOW_SECONDS,
     RateLimitMiddleware,
 )
-from backend.api.routes import analysis, history, matches, session
+from backend.api.routes import analysis, auth, history, matches, session
+from backend.db.database import DATABASE_URL, init_db
 from backend.services.live_refresh_service import live_refresh_service
 
 
@@ -24,6 +26,7 @@ def _get_allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await asyncio.to_thread(init_db)
     await live_refresh_service.start()
     try:
         yield
@@ -51,6 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(matches.router)
 app.include_router(analysis.router)
 app.include_router(history.router)
@@ -62,9 +66,16 @@ async def health_check() -> dict:
     return {
         "status": "ok",
         "service": "cricket-match-analysis-agent",
+        "database": {
+            "configured": bool(DATABASE_URL),
+            "driver": DATABASE_URL.split(":", 1)[0],
+        },
         "live_cache": live_refresh_service.status(),
         "rate_limit": {
             "requests": RATE_LIMIT_REQUESTS,
             "window_seconds": RATE_LIMIT_WINDOW_SECONDS,
+        },
+        "auth": {
+            "jwt_enabled": True,
         },
     }

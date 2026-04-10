@@ -54,7 +54,7 @@ def _run_cached_agent_cycle(state: Dict[str, Any]) -> tuple[Dict[str, Any], str]
     return result, "miss"
 
 
-def run_analysis(state: Dict[str, Any], session_id: Optional[str] = None) -> Dict[str, Any]:
+def run_analysis(state: Dict[str, Any], session_id: Optional[str] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
     """Run the hybrid strategy service, cache repeated requests, and persist non-critical artifacts safely."""
     agent_output, cache_status = _run_cached_agent_cycle(state)
     enriched_state = agent_output["state"]
@@ -73,7 +73,7 @@ def run_analysis(state: Dict[str, Any], session_id: Optional[str] = None) -> Dic
 
     entry = build_history_entry(state, enriched_state, plan, agent_output)
     try:
-        history_saved = persist_entry(entry)
+        history_saved = persist_entry(entry, user_id=user_id)
     except Exception as exc:
         logger.warning("History persistence failed | match_key=%s | error=%s", agent_output.get("match_key"), exc)
         history_saved = False
@@ -91,8 +91,9 @@ def run_analysis(state: Dict[str, Any], session_id: Optional[str] = None) -> Dic
             confidence=agent_output["confidence"],
             action_summary=agent_output["action_summary"],
             cache_status=cache_status,
+            user_id=user_id,
         )
-        session_payload = fetch_session(resolved_session_id, limit=12)
+        session_payload = fetch_session(resolved_session_id, limit=12, user_id=user_id)
     except Exception as exc:
         logger.warning("Session persistence failed | session_id=%s | error=%s", resolved_session_id, exc)
         warnings.append("Session tracking was temporarily unavailable for this refresh.")

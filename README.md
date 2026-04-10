@@ -67,6 +67,9 @@ cricket-match-analysis-agent/
 | POST | `/api/analysis/prematch` | Get pre-match advice (toss + XI) |
 | GET | `/api/history/{match_key}` | Fetch over-by-over history |
 | GET | `/api/session/{session_id}` | Fetch session snapshots and trend summary |
+| POST | `/api/auth/register` | Create a user account and issue a JWT |
+| POST | `/api/auth/login` | Login and issue a JWT |
+| GET | `/api/auth/me` | Fetch the current authenticated user |
 
 ---
 
@@ -103,12 +106,17 @@ Recent backend improvements include:
 - **Fallback-safe execution** if the reflective layer fails during a refresh
 - **Background live match refresh** to reduce repeated Cricbuzz scraping pressure
 - **In-memory rate limiting** via `RateLimitMiddleware`
+- **JWT authentication** for account-linked usage and browser session reuse
+- **Persistent SQLite storage** for users, analysis history, and session snapshots in `backend/data/app.db`
 - **Structured engine metadata** in API responses (`engine_meta`, cache status, warnings)
 
 Environment variables are provided in `.env.example`:
 
 ```bash
 ALLOWED_ORIGINS=http://localhost:8080,http://localhost:5173
+DATABASE_URL=sqlite:///backend/data/app.db
+JWT_SECRET_KEY=change-this-in-production
+JWT_EXPIRY_MINUTES=720
 RATE_LIMIT_REQUESTS=120
 RATE_LIMIT_WINDOW_SECONDS=60
 LIVE_REFRESH_INTERVAL_SECONDS=30

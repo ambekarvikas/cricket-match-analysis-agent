@@ -9,6 +9,7 @@ from backend.core.session_store import (
     make_session_id,
     save_session_entry,
 )
+from backend.services.storage_service import fetch_session_records, persist_session_record
 
 
 def resolve_session_id(match_key: str, session_id: Optional[str] = None) -> str:
@@ -24,6 +25,7 @@ def persist_session_snapshot(
     confidence: int,
     action_summary: str,
     cache_status: str,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     entry = build_session_entry(
         session_id=session_id,
@@ -36,11 +38,14 @@ def persist_session_snapshot(
         cache_status=cache_status,
     )
     save_session_entry(entry)
+    persist_session_record(entry, user_id=user_id)
     return entry
 
 
-def fetch_session(session_id: str, limit: int = 30) -> Dict[str, Any]:
-    entries = load_session_entries(session_id=session_id, limit=limit)
+def fetch_session(session_id: str, limit: int = 30, user_id: Optional[int] = None) -> Dict[str, Any]:
+    entries = fetch_session_records(session_id=session_id, limit=limit, user_id=user_id)
+    if not entries:
+        entries = load_session_entries(session_id=session_id, limit=limit)
     summary = build_session_summary(session_id=session_id, entries=entries)
     return {
         "session_id": session_id,

@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react'
-import { fetchScenarios } from './api/client'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  fetchCurrentUser,
+  fetchScenarios,
+  getStoredAuthToken,
+  loginUser,
+  logoutUser,
+  registerUser,
+} from './api/client'
 import { AgentLoop } from './components/AgentLoop'
+import { AuthPanel } from './components/AuthPanel'
 import { HistoryTable } from './components/HistoryTable'
 import { MatchSnapshot } from './components/MatchSnapshot'
 import { MetricsPanel } from './components/MetricsPanel'
@@ -12,7 +20,7 @@ import { StrategyView } from './components/StrategyView'
 import { WhatIfPanel } from './components/WhatIfPanel'
 import { useLiveMatches } from './hooks/useLiveMatches'
 import { useMatchAnalysis } from './hooks/useMatchAnalysis'
-import type { SourceMode } from './types'
+import type { AuthUser, SourceMode } from './types'
 
 export default function App() {
   const [mode, setMode] = useState<SourceMode>('hardcoded')
@@ -21,6 +29,9 @@ export default function App() {
   const [matchReference, setMatchReference] = useState('')
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   const { matches: liveMatches } = useLiveMatches()
 
@@ -37,6 +48,56 @@ export default function App() {
     autoRefresh,
     refreshInterval,
   })
+
+  useEffect(() => {
+    if (!getStoredAuthToken()) return
+    setAuthLoading(true)
+    fetchCurrentUser()
+      .then((user) => {
+        setCurrentUser(user)
+        setAuthError(null)
+      })
+      .catch(() => {
+        logoutUser()
+        setCurrentUser(null)
+      })
+      .finally(() => setAuthLoading(false))
+  }, [])
+
+  const handleLogin = useCallback(async (email: string, password: string) => {
+    setAuthLoading(true)
+    setAuthError(null)
+    try {
+      const result = await loginUser(email, password)
+      setCurrentUser(result.user)
+      refresh()
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Login failed')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [refresh])
+
+  const handleRegister = useCallback(async (email: string, password: string, displayName?: string) => {
+    setAuthLoading(true)
+    setAuthError(null)
+    try {
+      const result = await registerUser(email, password, displayName)
+      setCurrentUser(result.user)
+      refresh()
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Registration failed')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [refresh])
+
+  const handleLogout = useCallback(() => {
+    logoutUser()
+    setCurrentUser(null)
+    setAuthError(null)
+    refresh()
+  }, [refresh])
 
   return (
     <div className="flex min-h-screen">
@@ -65,6 +126,15 @@ export default function App() {
             <span className="text-xs text-emerald-400 animate-pulse">Loading…</span>
           )}
         </div>
+
+        <AuthPanel
+          user={currentUser}
+          loading={authLoading}
+          error={authError}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onLogout={handleLogout}
+        />
 
         {error && (
           <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-sm text-red-300">
