@@ -1,92 +1,227 @@
-# Cricket Match Analysis Agent
+# Cricket Match Intelligence API
 
-A cricket strategy agent built on an **observe → recall → evaluate → reflect → act** loop, exposing a **FastAPI backend** and a **React + Vite frontend**.
+An **API-first cricket decision engine** built with **FastAPI**, **JWT auth**, **persistent storage**, and a **hybrid rule + agent analysis pipeline**.
+
+It analyzes live or simulated cricket match states and returns structured outputs such as:
+- win probability
+- batting and bowling strategy
+- what-if simulations
+- session-aware trend tracking
+- decision recommendations for the next phase of play
+
+> The React dashboard is an optional client. The primary product is the backend API.
 
 ---
 
-## Architecture
+## Why this project
 
-```
-cricket-match-analysis-agent/
-├── backend/
-│   ├── main.py                  # FastAPI app entry point (lifespan, CORS, middleware)
-│   ├── api/
-│   │   ├── middleware/
-│   │   │   └── rate_limit.py    # Simple in-memory request throttling
-│   │   ├── routes/
-│   │   │   ├── matches.py       # GET /api/matches/*
-│   │   │   ├── analysis.py      # POST /api/analysis/*
-│   │   │   ├── history.py       # GET /api/history/*
-│   │   │   └── session.py       # GET /api/session/*
-│   │   └── schemas/             # Pydantic request/response models
-│   ├── services/                # Service Manager layer
-│   │   ├── match_service.py     # Orchestrates agent cycle + history
-│   │   ├── strategy_service.py  # Hybrid rule/agent orchestration + fallback
-│   │   ├── live_refresh_service.py # Background refresh cache for live listings
-│   │   ├── data_service.py      # Wraps data_source
-│   │   ├── history_service.py   # Wraps history_store
-│   │   └── session_service.py   # Session snapshot access
-│   ├── core/                    # Pure stateless agent logic
-│   │   ├── agent_core.py
-│   │   ├── agent_engine.py
-│   │   ├── rule_engine.py
-│   │   ├── strategy_engine.py
-│   │   ├── prematch_advisor.py
-│   │   ├── data_source.py
-│   │   └── history_store.py
-│   ├── data/                    # strategy/session JSONL persistence
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── api/client.ts        # Typed API wrappers
-│   │   ├── hooks/               # useMatchAnalysis, useLiveMatches
-│   │   └── components/          # Sidebar, MatchSnapshot, MetricsPanel,
-│   │                            # AgentLoop, ReflectionPanel, StrategyView,
-│   │                            # PreMatchAdvisor, HistoryTable
-│   ├── package.json
-│   └── vite.config.ts
-├── app.py                       # (legacy) CLI entry point
-├── streamlit_app.py             # (legacy) Streamlit UI
-└── README.md
+This project is designed as a **backend system with AI capabilities**, not just a local cricket demo.
+
+It demonstrates:
+- **API design** with FastAPI
+- **service-oriented backend architecture**
+- **hybrid decision logic** (deterministic rules + reflective agent layer)
+- **JWT-based authentication**
+- **persistent storage** with SQLAlchemy-backed DB models
+- **runtime hardening** with caching, rate limiting, and fallback handling
+
+---
+
+## System flow
+
+```mermaid
+flowchart LR
+    A[External Client / React UI] --> B[FastAPI API]
+    B --> C[MatchService / StrategyService]
+    C --> D[Hybrid Decision Engine]
+    D --> E[RuleEngine]
+    D --> F[AgentEngine]
+    E --> G[Cricket Data + Heuristics]
+    F --> G
+    C --> H[(SQLite DB)]
+    B --> I[JWT Auth + Rate Limit]
 ```
 
----
+### Request path
 
-## API Endpoints
+```text
+Client → API → Service Layer → Hybrid Engine → Response JSON
+```
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/api/matches/scenarios` | List hardcoded scenario names |
-| GET | `/api/matches/scenario/{name}` | Get a hardcoded scenario state |
-| GET | `/api/matches/live` | List live matches from Cricbuzz |
-| GET | `/api/matches/live/{match_reference}` | Fetch a specific live match |
-| POST | `/api/analysis/run` | Run agent cycle on a match state |
-| POST | `/api/analysis/prematch` | Get pre-match advice (toss + XI) |
-| GET | `/api/history/{match_key}` | Fetch over-by-over history |
-| GET | `/api/session/{session_id}` | Fetch session snapshots and trend summary |
-| POST | `/api/auth/register` | Create a user account and issue a JWT |
-| POST | `/api/auth/login` | Login and issue a JWT |
-| GET | `/api/auth/me` | Fetch the current authenticated user |
+Example live decision path:
+
+```text
+Input: runs=140, wickets=4, overs=15.0
+→ StrategyService evaluates match pressure
+→ RuleEngine produces safe tactical baseline
+→ AgentEngine adds reflective reasoning and matchup insight
+→ API returns win %, plan, confidence, and what-if scenarios
+```
 
 ---
 
-## Running the Backend
+## Core API endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health, cache, rate-limit, and DB status |
+| GET | `/api/matches/live` | Fetch available live matches |
+| GET | `/api/matches/live/{match_reference}` | Load a specific live match |
+| POST | `/api/analysis/run` | Analyze a match state |
+| POST | `/api/analysis/prematch` | Toss + XI recommendation |
+| GET | `/api/history/{match_key}` | Fetch historical analysis snapshots |
+| GET | `/api/session/{session_id}` | Fetch session-level trend context |
+| POST | `/api/auth/register` | Register a user and issue JWT |
+| POST | `/api/auth/login` | Login and issue JWT |
+| GET | `/api/auth/me` | Return current authenticated user |
+
+Interactive docs: `http://localhost:8000/docs`
+
+---
+
+## Example: `POST /api/analysis/run`
+
+### Request
+
+```json
+{
+  "state": {
+    "batting_team": "India",
+    "bowling_team": "Australia",
+    "innings": 2,
+    "runs": 140,
+    "wickets": 4,
+    "overs": 15.0,
+    "target": 182,
+    "total_overs": 20,
+    "striker": "Suryakumar Yadav",
+    "bowler": "Hazlewood"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "match_key": "india_vs_australia",
+  "session_id": "india_vs_australia-7f454f29",
+  "cache_status": "miss",
+  "state": {
+    "phase": "death",
+    "runs_needed": 42,
+    "balls_left": 30,
+    "estimated_win_probability": 58
+  },
+  "plan": {
+    "strategy": "CALM CLOSE-OUT",
+    "target_runs": "7-9",
+    "risk_level": "Medium",
+    "recommended_action": "Let the best finisher face the majority of the next over and commit to one side of the ground.",
+    "bowling_recommended_action": "Miss wide and full, not in the slot, and protect the shorter boundary first."
+  },
+  "confidence": 74,
+  "what_if": [
+    {
+      "label": "Score 12 next over",
+      "win_probability": 62,
+      "win_probability_delta": 4,
+      "impact": "positive"
+    }
+  ],
+  "engine_meta": {
+    "mode": "hybrid",
+    "primary_engine": "agent-engine",
+    "supporting_engine": "rule-engine",
+    "fallback_used": false
+  }
+}
+```
+
+---
+
+## Example: authentication flow
+
+### Register or login
+
+```json
+POST /api/auth/login
+{
+  "email": "demo@example.com",
+  "password": "secret123"
+}
+```
+
+### Auth response
+
+```json
+{
+  "access_token": "<jwt-token>",
+  "token_type": "bearer",
+  "user": {
+    "id": 2,
+    "email": "demo@example.com",
+    "display_name": "Demo User"
+  }
+}
+```
+
+Use the token on protected or account-linked requests:
+
+```http
+Authorization: Bearer <jwt-token>
+```
+
+---
+
+## Tech stack
+
+### Backend
+- `FastAPI`
+- `SQLAlchemy`
+- `PyJWT`
+- `Uvicorn`
+- in-memory caching + rate limiting
+
+### Frontend
+- `React`
+- `TypeScript`
+- `Vite`
+
+### Current persistence
+- **SQLite** by default: `backend/data/app.db`
+- **Postgres-ready** through `DATABASE_URL`
+
+---
+
+## Project structure
+
+```text
+backend/
+  api/
+    routes/        # REST endpoints
+    middleware/    # rate limiting
+    schemas/       # request/response contracts
+  services/        # orchestration, auth, storage, live refresh
+  core/            # rule engine, agent engine, strategy logic
+  db/              # SQLAlchemy setup + models
+  data/            # SQLite DB and local JSONL artifacts
+frontend/
+  src/             # optional UI client for the API
+```
+
+---
+
+## Local run
+
+### Backend
 
 ```bash
-cd backend
-pip install -r requirements.txt
-# from the repo root:
+pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --port 8000
 ```
 
-Interactive docs: http://localhost:8000/docs
-
----
-
-## Running the Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -94,28 +229,27 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The Vite dev server proxies `/api` → `http://localhost:8000`.
+---
+
+## Docker run
+
+```bash
+docker compose up --build
+```
+
+Then open:
+- **Frontend:** `http://localhost:8080`
+- **Backend API:** `http://localhost:8000`
+- **Swagger docs:** `http://localhost:8000/docs`
 
 ---
 
-## Production Hardening
-
-Recent backend improvements include:
-
-- **Hybrid analysis orchestration** using both `RuleEngine` and `AgentEngine`
-- **Fallback-safe execution** if the reflective layer fails during a refresh
-- **Background live match refresh** to reduce repeated Cricbuzz scraping pressure
-- **In-memory rate limiting** via `RateLimitMiddleware`
-- **JWT authentication** for account-linked usage and browser session reuse
-- **Persistent SQLite storage** for users, analysis history, and session snapshots in `backend/data/app.db`
-- **Structured engine metadata** in API responses (`engine_meta`, cache status, warnings)
-
-Environment variables are provided in `.env.example`:
+## Environment variables
 
 ```bash
 ALLOWED_ORIGINS=http://localhost:8080,http://localhost:5173
 DATABASE_URL=sqlite:///backend/data/app.db
-JWT_SECRET_KEY=change-this-in-production
+JWT_SECRET_KEY=replace-with-a-long-random-secret-key-32chars-min
 JWT_EXPIRY_MINUTES=720
 RATE_LIMIT_REQUESTS=120
 RATE_LIMIT_WINDOW_SECONDS=60
@@ -125,56 +259,23 @@ LIVE_CACHE_TTL_SECONDS=45
 
 ---
 
-## Docker Deployment
+## Engineering highlights
 
-Run the full stack with Docker Compose:
-
-```bash
-docker compose up --build
-```
-
-Services:
-
-- **Frontend:** http://localhost:8080
-- **Backend API:** http://localhost:8000
-- **API docs:** http://localhost:8000/docs
-
-The `frontend/nginx.conf` file proxies `/api` and `/health` to the backend container.
+- **Hybrid engine split**: rule-based baseline + reflective agent layer
+- **Fallback-safe execution**: graceful degradation if the agent layer fails
+- **Session-aware analysis**: trend tracking across repeated requests
+- **What-if simulation**: projected outcomes for alternate next-over scenarios
+- **Async-safe API design**: thread-offloaded blocking work and background refresh service
+- **Auth + persistence**: JWT login and DB-backed history/session storage
 
 ---
 
-## Agent Loop
+## Legacy interfaces
 
-Each analysis request runs the full agent cycle:
+`app.py` and `streamlit_app.py` are kept only as reference interfaces from the earlier prototype stage.
 
-1. **Observe** — read the current live or hardcoded match state
-2. **Recall** — load prior over-level memory from `backend/data/strategy_history.jsonl`
-3. **Evaluate** — score the last batting and bowling recommendation
-4. **Reflect** — decide whether to adjust aggression or hold course
-5. **Act** — produce a fresh batting plan and bowling counter-plan
+The main production-facing path is now:
 
----
-
-## History Storage
-
-Each completed over is saved to `backend/data/strategy_history.jsonl`.
-Each entry contains the score, win probability, strategy, and a plain-English
-`change_reason` explaining what shifted, e.g.:
-
-> *Win probability dropped from 62% to 54% because a wicket fell and dot-ball pressure built up in a low-scoring over.*
-
----
-
-## Legacy CLI / Streamlit
-
-The original `app.py` (CLI) and `streamlit_app.py` are kept for reference.
-They import from the root-level Python files which remain unchanged.
-
-```bash
-# CLI
-pip install -r requirements.txt
-python app.py
-
-# Streamlit
-streamlit run streamlit_app.py
+```text
+FastAPI backend + optional React client
 ```
