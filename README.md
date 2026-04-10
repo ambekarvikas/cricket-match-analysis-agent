@@ -9,25 +9,34 @@ A cricket strategy agent built on an **observe → recall → evaluate → refle
 ```
 cricket-match-analysis-agent/
 ├── backend/
-│   ├── main.py                  # FastAPI app entry point (CORS, routers)
+│   ├── main.py                  # FastAPI app entry point (lifespan, CORS, middleware)
 │   ├── api/
+│   │   ├── middleware/
+│   │   │   └── rate_limit.py    # Simple in-memory request throttling
 │   │   ├── routes/
 │   │   │   ├── matches.py       # GET /api/matches/*
 │   │   │   ├── analysis.py      # POST /api/analysis/*
-│   │   │   └── history.py       # GET /api/history/*
+│   │   │   ├── history.py       # GET /api/history/*
+│   │   │   └── session.py       # GET /api/session/*
 │   │   └── schemas/             # Pydantic request/response models
 │   ├── services/                # Service Manager layer
 │   │   ├── match_service.py     # Orchestrates agent cycle + history
+│   │   ├── strategy_service.py  # Hybrid rule/agent orchestration + fallback
+│   │   ├── live_refresh_service.py # Background refresh cache for live listings
 │   │   ├── data_service.py      # Wraps data_source
-│   │   └── history_service.py   # Wraps history_store
+│   │   ├── history_service.py   # Wraps history_store
+│   │   └── session_service.py   # Session snapshot access
 │   ├── core/                    # Pure stateless agent logic
 │   │   ├── agent_core.py
+│   │   ├── agent_engine.py
+│   │   ├── rule_engine.py
 │   │   ├── strategy_engine.py
 │   │   ├── prematch_advisor.py
 │   │   ├── data_source.py
 │   │   └── history_store.py
-│   ├── data/                    # strategy_history.jsonl (persisted)
-│   └── requirements.txt
+│   ├── data/                    # strategy/session JSONL persistence
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx
@@ -57,6 +66,7 @@ cricket-match-analysis-agent/
 | POST | `/api/analysis/run` | Run agent cycle on a match state |
 | POST | `/api/analysis/prematch` | Get pre-match advice (toss + XI) |
 | GET | `/api/history/{match_key}` | Fetch over-by-over history |
+| GET | `/api/session/{session_id}` | Fetch session snapshots and trend summary |
 
 ---
 
@@ -82,6 +92,46 @@ npm run dev
 ```
 
 Open http://localhost:5173. The Vite dev server proxies `/api` → `http://localhost:8000`.
+
+---
+
+## Production Hardening
+
+Recent backend improvements include:
+
+- **Hybrid analysis orchestration** using both `RuleEngine` and `AgentEngine`
+- **Fallback-safe execution** if the reflective layer fails during a refresh
+- **Background live match refresh** to reduce repeated Cricbuzz scraping pressure
+- **In-memory rate limiting** via `RateLimitMiddleware`
+- **Structured engine metadata** in API responses (`engine_meta`, cache status, warnings)
+
+Environment variables are provided in `.env.example`:
+
+```bash
+ALLOWED_ORIGINS=http://localhost:8080,http://localhost:5173
+RATE_LIMIT_REQUESTS=120
+RATE_LIMIT_WINDOW_SECONDS=60
+LIVE_REFRESH_INTERVAL_SECONDS=30
+LIVE_CACHE_TTL_SECONDS=45
+```
+
+---
+
+## Docker Deployment
+
+Run the full stack with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Services:
+
+- **Frontend:** http://localhost:8080
+- **Backend API:** http://localhost:8000
+- **API docs:** http://localhost:8000/docs
+
+The `frontend/nginx.conf` file proxies `/api` and `/health` to the backend container.
 
 ---
 
