@@ -410,6 +410,33 @@ def _parse_match_card(card: Dict[str, str]) -> Dict[str, Any]:
     return parsed
 
 
+def _is_active_live_match(match: Dict[str, Any]) -> bool:
+    if match.get("is_pre_match"):
+        return False
+
+    status = _clean_text(str(match.get("status") or "")).lower()
+    inactive_markers = (
+        "preview",
+        "upcoming",
+        "schedule",
+        "scheduled",
+        "starts at",
+        "start at",
+        "won by",
+        "beat ",
+        "match tied",
+        "tied match",
+        "no result",
+        "abandoned",
+    )
+    if any(marker in status for marker in inactive_markers):
+        return False
+
+    runs = int(match.get("runs") or 0)
+    overs = float(match.get("overs") or 0.0)
+    return runs > 0 or overs > 0
+
+
 def list_live_matches_from_cricbuzz(series_hint: Optional[str] = None) -> List[Dict[str, Any]]:
     try:
         html_text = _fetch_html(CRICBUZZ_LIVE_URL)
@@ -420,7 +447,9 @@ def list_live_matches_from_cricbuzz(series_hint: Optional[str] = None) -> List[D
     live_matches: List[Dict[str, Any]] = []
     for card in cards:
         try:
-            live_matches.append(_parse_match_card(card))
+            parsed = _parse_match_card(card)
+            if _is_active_live_match(parsed):
+                live_matches.append(parsed)
         except ValueError:
             continue
 

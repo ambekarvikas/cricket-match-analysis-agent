@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 @router.get("/{match_key}", response_model=HistoryResponse)
 async def get_history(
     match_key: str,
-    limit: Annotated[int, Query(default=50, ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     current_user: Annotated[Optional[Dict[str, Any]], Depends(get_optional_current_user)] = None,
 ) -> Dict[str, Any]:
     entries = await asyncio.to_thread(

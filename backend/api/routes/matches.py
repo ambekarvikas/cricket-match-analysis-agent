@@ -26,7 +26,7 @@ async def get_scenario(name: str) -> Dict[str, Any]:
 
 @router.get("/live", responses={502: {"description": "Live data source unavailable."}})
 async def get_live_matches(
-    series_hint: Annotated[Optional[str], Query(default=None)] = None,
+    series_hint: Annotated[Optional[str], Query()] = None,
 ) -> List[Dict[str, Any]]:
     try:
         return await live_refresh_service.get_matches(series_hint=series_hint)

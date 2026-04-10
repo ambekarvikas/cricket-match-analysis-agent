@@ -20,13 +20,35 @@ import { StrategyView } from './components/StrategyView'
 import { WhatIfPanel } from './components/WhatIfPanel'
 import { useLiveMatches } from './hooks/useLiveMatches'
 import { useMatchAnalysis } from './hooks/useMatchAnalysis'
-import type { AuthUser, SourceMode } from './types'
+import type { AuthUser, MatchState, SourceMode } from './types'
+
+const LAST_LIVE_MATCH_KEY = 'cricket-analysis-last-live-match'
+
+function getStoredLastLiveMatch(): string {
+  if (typeof window === 'undefined') return ''
+  return window.localStorage.getItem(LAST_LIVE_MATCH_KEY) ?? ''
+}
+
+function saveLastLiveMatch(reference: string): void {
+  if (typeof window === 'undefined') return
+  if (reference) {
+    window.localStorage.setItem(LAST_LIVE_MATCH_KEY, reference)
+  } else {
+    window.localStorage.removeItem(LAST_LIVE_MATCH_KEY)
+  }
+}
+
+function getMatchReferenceValue(match?: MatchState | null): string {
+  const sourceUrl = typeof match?.source_url === 'string' ? match.source_url : ''
+  const matchId = typeof match?.match_id === 'string' ? match.match_id : ''
+  return sourceUrl || matchId || ''
+}
 
 export default function App() {
-  const [mode, setMode] = useState<SourceMode>('hardcoded')
+  const [mode, setMode] = useState<SourceMode>('live')
   const [scenario, setScenario] = useState('chase_pressure')
   const [scenarios, setScenarios] = useState<string[]>(['chase_pressure'])
-  const [matchReference, setMatchReference] = useState('')
+  const [matchReference, setMatchReference] = useState(() => getStoredLastLiveMatch())
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
@@ -34,6 +56,11 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
 
   const { matches: liveMatches } = useLiveMatches()
+
+  const handleMatchReferenceChange = useCallback((reference: string) => {
+    setMatchReference(reference)
+    saveLastLiveMatch(reference)
+  }, [])
 
   useEffect(() => {
     fetchScenarios()
@@ -48,6 +75,32 @@ export default function App() {
     autoRefresh,
     refreshInterval,
   })
+
+  useEffect(() => {
+    if (mode !== 'live' || liveMatches.length === 0) return
+
+    const currentExists = matchReference
+      ? liveMatches.some((match) => {
+          const ref = getMatchReferenceValue(match)
+          return ref === matchReference
+        })
+      : false
+
+    if (!matchReference || !currentExists) {
+      const fallbackReference = getMatchReferenceValue(liveMatches[0])
+      if (fallbackReference && fallbackReference !== matchReference) {
+        handleMatchReferenceChange(fallbackReference)
+      }
+    }
+  }, [mode, liveMatches, matchReference, handleMatchReferenceChange])
+
+  useEffect(() => {
+    if (mode !== 'live' || !analysis) return
+    const resolvedReference = getMatchReferenceValue(analysis.state)
+    if (resolvedReference && resolvedReference !== matchReference) {
+      handleMatchReferenceChange(resolvedReference)
+    }
+  }, [mode, analysis, matchReference, handleMatchReferenceChange])
 
   useEffect(() => {
     if (!getStoredAuthToken()) return
@@ -108,7 +161,7 @@ export default function App() {
         scenarios={scenarios}
         onScenarioChange={setScenario}
         matchReference={matchReference}
-        onMatchReferenceChange={setMatchReference}
+        onMatchReferenceChange={handleMatchReferenceChange}
         liveMatches={liveMatches}
         autoRefresh={autoRefresh}
         onAutoRefreshChange={setAutoRefresh}
