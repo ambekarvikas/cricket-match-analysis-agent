@@ -25,6 +25,35 @@ export function StrategyView({ analysis }: StrategyViewProps) {
     <div className="bg-gray-900 rounded-lg p-4 border border-gray-800 space-y-3">
       <h2 className="text-base font-semibold text-emerald-400">Team Perspectives</h2>
 
+      {analysis.engine_meta && (
+        <div
+          className={`rounded-lg border p-3 text-xs ${
+            analysis.engine_meta.fallback_used
+              ? 'bg-amber-900/20 border-amber-800 text-amber-100'
+              : 'bg-emerald-900/20 border-emerald-800 text-emerald-100'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">Engine Status</span>
+            {analysis.engine_meta.mode && (
+              <span className="uppercase tracking-wide text-[10px] px-2 py-0.5 rounded bg-black/20">
+                {analysis.engine_meta.mode}
+              </span>
+            )}
+            {analysis.engine_meta.cache_status && (
+              <span className="text-[11px] opacity-90">Cache: {analysis.engine_meta.cache_status}</span>
+            )}
+          </div>
+          <div className="mt-1 space-y-1">
+            {analysis.engine_meta.primary_engine && <div>Primary: {analysis.engine_meta.primary_engine}</div>}
+            {analysis.engine_meta.supporting_engine && <div>Support: {analysis.engine_meta.supporting_engine}</div>}
+            {analysis.engine_meta.fallback_used && analysis.engine_meta.fallback_reason && (
+              <div>Fallback reason: {analysis.engine_meta.fallback_reason}</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {(plan.recommended_action || plan.bowling_recommended_action) && (
         <div className="bg-indigo-900/20 border border-indigo-800 rounded-lg p-3 space-y-2 text-xs text-indigo-100">
           <div className="flex flex-wrap items-center gap-3">
@@ -121,6 +150,7 @@ export function StrategyView({ analysis }: StrategyViewProps) {
       {renderList('Decision Rationale', plan.decision_rationale, 'text-indigo-300')}
       {renderList('Avoid Right Now', plan.avoid_now, 'text-red-300')}
       {renderList('Matchup Insights', plan.matchup_insights, 'text-purple-300')}
+      {renderList('Engine Warnings', analysis.engine_meta?.warnings, 'text-amber-300')}
       {renderList('Key Facts', plan.awareness_notes)}
     </div>
   )

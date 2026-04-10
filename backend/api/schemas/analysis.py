@@ -45,11 +45,24 @@ class StrategyPlan(BaseModel):
     awareness_notes: Optional[List[str]] = None
 
 
+class EngineMeta(BaseModel):
+    mode: Optional[str] = None
+    primary_engine: Optional[str] = None
+    supporting_engine: Optional[str] = None
+    fallback_used: Optional[bool] = None
+    fallback_reason: Optional[str] = None
+    request_id: Optional[str] = None
+    cache_status: Optional[str] = None
+    timings_ms: Optional[Dict[str, float]] = None
+    warnings: Optional[List[str]] = None
+
+
 class AnalysisResponse(BaseModel):
     match_key: str
     session_id: Optional[str] = None
     cache_status: Optional[str] = None
     session_summary: Optional[Dict[str, Any]] = None
+    engine_meta: Optional[EngineMeta] = None
     state: Dict[str, Any]
     plan: Dict[str, Any]
     objective: str

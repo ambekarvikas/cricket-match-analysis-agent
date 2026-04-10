@@ -133,11 +133,24 @@ export interface SessionResult {
   entries: SessionEntry[]
 }
 
+export interface EngineMeta {
+  mode?: string
+  primary_engine?: string
+  supporting_engine?: string | null
+  fallback_used?: boolean
+  fallback_reason?: string | null
+  request_id?: string
+  cache_status?: string
+  timings_ms?: Record<string, number>
+  warnings?: string[]
+}
+
 export interface AnalysisResult {
   match_key: string
   session_id?: string
   cache_status?: string
   session_summary?: SessionSummary | null
+  engine_meta?: EngineMeta | null
   state: MatchState
   plan: StrategyPlan
   objective: string

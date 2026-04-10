@@ -14,6 +14,7 @@ env/
 
 # Data files that grow at runtime (keep .gitkeep)
 backend/data/strategy_history.jsonl
+backend/data/session_history.jsonl
 
 # Node / frontend
 frontend/node_modules/
